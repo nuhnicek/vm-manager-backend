@@ -6,12 +6,9 @@ import (
 )
 
 func Session(token string, conn types.Conn) (error, string) {
-	email := conn.Redis.Get(context.TODO(), token)
-	if email.Err() != nil {
-		println("nigga")
-		println(email.Err())
-		return email.Err(), ""
+	uuid := conn.Redis.Get(context.TODO(), token)
+	if uuid.Err() != nil {
+		return uuid.Err(), ""
 	}
-	print(email.Val())
-	return nil, email.Val()
+	return nil, uuid.Val()
 }

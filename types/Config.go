@@ -1,7 +1,10 @@
 package types
 
 type Config struct {
-	Port     string
-	MongoURI string
-	Redis    string
+	Port            string
+	MongoURI        string
+	Redis           string
+	ProxmoxPassword string
+	ProxmoxUsername string
+	ProxmoxHostURI  string
 }

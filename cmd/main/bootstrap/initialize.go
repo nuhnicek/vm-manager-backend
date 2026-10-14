@@ -22,6 +22,11 @@ func Initialize(router *gin.Engine) (error, types.Config) {
 		return err, config
 	}
 	conn.Redis = redis
+	proxmox, err := ConnectProxmox(config.ProxmoxUsername, config.ProxmoxPassword, config.ProxmoxHostURI)
+	if err != nil {
+		return err, config
+	}
+	conn.Proxmox = proxmox
 	RegisterRouter(router, conn)
 	return nil, config
 }

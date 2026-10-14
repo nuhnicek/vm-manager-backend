@@ -23,8 +23,24 @@ func Enviroment() (error, types.Config) {
 	if redis == "" {
 		return errors.New("Redis not set"), config
 	}
+	proxmoxUsername := os.Getenv("PROXMOX_USERNAME")
+	if proxmoxUsername == "" {
+		return errors.New("PROXMOX_USERNAME not set"), config
+	}
+	proxmoxPassword := os.Getenv("PROXMOX_PASSWORD")
+	if proxmoxPassword == "" {
+		return errors.New("PROXMOX_PASSWORD not set"), config
+	}
+	proxmoxURI := os.Getenv("PROXMOX_URI")
+	if proxmoxURI == "" {
+		return errors.New("PROXMOX_URI not set"), config
+	}
 	config.MongoURI = mongoUri
 	config.Port = port
 	config.Redis = redis
+	config.ProxmoxHostURI = proxmoxURI
+	config.ProxmoxUsername = proxmoxUsername
+	config.ProxmoxPassword = proxmoxPassword
+	
 	return nil, config
 }

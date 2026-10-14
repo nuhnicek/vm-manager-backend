@@ -12,9 +12,9 @@ import (
 )
 
 type UserDocument struct {
-	uuid     string
-	email    string
-	password string
+	UUID     string `bson:"uuid"`
+	Email    string `bson:"email"`
+	Password string `bson:"password"`
 }
 
 func Login(email string, password string, conn types.Conn) (error, string) {
@@ -28,13 +28,13 @@ func Login(email string, password string, conn types.Conn) (error, string) {
 	}
 	result := coll.FindOne(context.TODO(), filter)
 	err := result.Decode(&user)
+
 	if err != nil {
 		return err, ""
 	}
 
-	token := pkg.SHA256(user.uuid + user.email + fmt.Sprintf("%s", time.Now()) + fmt.Sprintf("%s", rand.Int()))
-	fmt.Println(token)
-	err = conn.Redis.Set(context.Background(), token, user.email, 1*time.Hour).Err()
+	token := pkg.SHA256(user.UUID + user.Email + fmt.Sprintf("%s", time.Now()) + fmt.Sprintf("%d", rand.Int()))
+	err = conn.Redis.Set(context.Background(), token, user.UUID, 1*time.Hour).Err()
 	if err != nil {
 		return err, ""
 	}

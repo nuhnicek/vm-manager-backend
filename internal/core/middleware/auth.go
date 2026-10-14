@@ -12,15 +12,18 @@ func Auth(conn types.Conn) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		session := c.GetHeader("Authorization")
 		if session == "" {
+			session = c.Query("token")
+		}
+		if session == "" {
 			c.AbortWithStatus(http.StatusUnauthorized)
 			return
 		}
-		err, email := auth.Session(session, conn)
+		err, uuid := auth.Session(session, conn)
 		if err != nil {
 			c.AbortWithStatus(http.StatusUnauthorized)
 			return
 		}
-		c.Set("email", email)
+		c.Set("uuid", uuid)
 		c.Next()
 	}
 }
