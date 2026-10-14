@@ -89,21 +89,18 @@ func OpenVMConsole(conn types.Conn, userUUID string, vmid int) (*ConsoleStream, 
 		return nil, fmt.Errorf("failed to dial Proxmox terminal websocket: %w", err)
 	}
 
-	// Authenticate ticket with Proxmox
 	authPayload := fmt.Sprintf("%s:%s\n", term.User, term.Ticket)
 	if err := pveWS.WriteMessage(websocket.BinaryMessage, []byte(authPayload)); err != nil {
 		_ = pveWS.Close()
 		return nil, fmt.Errorf("failed to authenticate terminal ticket: %w", err)
 	}
 
-	// Proxmox sends "OK" upon successful authentication
 	_, resp, err := pveWS.ReadMessage()
 	if err != nil || string(resp) != "OK" {
 		_ = pveWS.Close()
 		return nil, fmt.Errorf("invalid terminal handshake response: %s", string(resp))
 	}
 
-	// Set initial terminal size (80 cols, 24 rows)
 	_ = pveWS.WriteMessage(websocket.BinaryMessage, []byte("1:80:24:"))
 
 	send := make(chan []byte, 128)
@@ -120,7 +117,6 @@ func OpenVMConsole(conn types.Conn, userUUID string, vmid int) (*ConsoleStream, 
 		return nil
 	}
 
-	// Keepalive ticker
 	go func() {
 		ticker := time.NewTicker(10 * time.Second)
 		defer ticker.Stop()
@@ -134,7 +130,6 @@ func OpenVMConsole(conn types.Conn, userUUID string, vmid int) (*ConsoleStream, 
 		}
 	}()
 
-	// Proxmox -> Client
 	go func() {
 		defer closeFn()
 		for {
@@ -165,7 +160,6 @@ func OpenVMConsole(conn types.Conn, userUUID string, vmid int) (*ConsoleStream, 
 		}
 	}()
 
-	// Client -> Proxmox
 	go func() {
 		defer closeFn()
 		for {
@@ -184,7 +178,6 @@ func OpenVMConsole(conn types.Conn, userUUID string, vmid int) (*ConsoleStream, 
 		}
 	}()
 
-	// Send initial newline to wake serial getty
 	go func() {
 		time.Sleep(100 * time.Millisecond)
 		select {
@@ -201,10 +194,6 @@ func OpenVMConsole(conn types.Conn, userUUID string, vmid int) (*ConsoleStream, 
 	}, nil
 }
 
-// OpenVMVNC initializes a Proxmox VNC proxy session (RFB protocol)
-// and opens a live bidirectional WebSocket stream to the VM's graphical screen.
-// It transparently authenticates with Proxmox using the ephemeral VNC ticket,
-// allowing the client (e.g. noVNC) to connect seamlessly without password prompts.
 func OpenVMVNC(conn types.Conn, userUUID string, vmid int) (*ConsoleStream, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
@@ -255,11 +244,9 @@ func OpenVMVNC(conn types.Conn, userUUID string, vmid int) (*ConsoleStream, erro
 		return nil
 	}
 
-	// Goroutine: Perform transparent RFB handshake, then proxy data
 	go func() {
 		defer safeClose()
 
-		// 1. Proxmox sends server RFB version (e.g. "RFB 003.008\n")
 		var serverVersion []byte
 		select {
 		case <-done:
@@ -281,14 +268,12 @@ func OpenVMVNC(conn types.Conn, userUUID string, vmid int) (*ConsoleStream, erro
 			return
 		}
 
-		// Forward server version to client
 		select {
 		case <-done:
 			return
 		case clientRecv <- serverVersion:
 		}
 
-		// 2. Client sends client RFB version (e.g. "RFB 003.008\n")
 		var clientVersion []byte
 		select {
 		case <-done:
@@ -302,14 +287,12 @@ func OpenVMVNC(conn types.Conn, userUUID string, vmid int) (*ConsoleStream, erro
 			return
 		}
 
-		// Forward client version to Proxmox
 		select {
 		case <-done:
 			return
 		case pveSend <- clientVersion:
 		}
 
-		// 3. Proxmox sends supported security types (e.g. [1, 2] = 1 type: VNCAuth)
 		var pveSecTypes []byte
 		select {
 		case <-done:
@@ -331,7 +314,6 @@ func OpenVMVNC(conn types.Conn, userUUID string, vmid int) (*ConsoleStream, erro
 			return
 		}
 
-		// Check if Proxmox requires VNCAuth (type 2)
 		requiresVNCAuth := false
 		if len(pveSecTypes) >= 2 {
 			count := int(pveSecTypes[0])
@@ -344,14 +326,12 @@ func OpenVMVNC(conn types.Conn, userUUID string, vmid int) (*ConsoleStream, erro
 		}
 
 		if requiresVNCAuth {
-			// Select security type 2 on Proxmox
 			select {
 			case <-done:
 				return
 			case pveSend <- []byte{2}:
 			}
 
-			// Proxmox sends 16-byte challenge
 			var challenge []byte
 			select {
 			case <-done:
@@ -381,7 +361,6 @@ func OpenVMVNC(conn types.Conn, userUUID string, vmid int) (*ConsoleStream, erro
 				return
 			}
 
-			// Encrypt challenge with vnc.Ticket using DES
 			resp := rfbEncrypt(vnc.Ticket, challenge)
 			select {
 			case <-done:
@@ -389,7 +368,6 @@ func OpenVMVNC(conn types.Conn, userUUID string, vmid int) (*ConsoleStream, erro
 			case pveSend <- resp:
 			}
 
-			// Proxmox sends SecurityResult (4 bytes: 0 0 0 0 = OK)
 			var pveSecResult []byte
 			select {
 			case <-done:
@@ -419,14 +397,12 @@ func OpenVMVNC(conn types.Conn, userUUID string, vmid int) (*ConsoleStream, erro
 				return
 			}
 
-			// Tell client security type 1 (None) is supported
 			select {
 			case <-done:
 				return
 			case clientRecv <- []byte{1, 1}:
 			}
 
-			// Wait for client to select security type 1
 			var clientChosen []byte
 			select {
 			case <-done:
@@ -440,14 +416,12 @@ func OpenVMVNC(conn types.Conn, userUUID string, vmid int) (*ConsoleStream, erro
 				return
 			}
 
-			// In RFB 3.8, send SecurityResult OK (0 0 0 0) to client
 			select {
 			case <-done:
 				return
 			case clientRecv <- []byte{0, 0, 0, 0}:
 			}
 
-			// If client sent extra bytes beyond the 1-byte chosen type, forward them
 			if len(clientChosen) > 1 {
 				select {
 				case <-done:
@@ -456,7 +430,6 @@ func OpenVMVNC(conn types.Conn, userUUID string, vmid int) (*ConsoleStream, erro
 				}
 			}
 		} else {
-			// Pass through if not VNCAuth
 			select {
 			case <-done:
 				return
@@ -464,7 +437,6 @@ func OpenVMVNC(conn types.Conn, userUUID string, vmid int) (*ConsoleStream, erro
 			}
 		}
 
-		// Handshake complete! Run bidirectional transparent proxy
 		go func() {
 			for {
 				select {

@@ -15,7 +15,7 @@ import (
 
 var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool {
-		return true // Allow cross-origin WebSocket connections from frontend/wails
+		return true
 	},
 	ReadBufferSize:  4096,
 	WriteBufferSize: 4096,
@@ -43,7 +43,6 @@ func ConsoleWS(conn types.Conn) gin.HandlerFunc {
 			return
 		}
 
-		// Upgrade HTTP connection to WebSocket
 		ws, err := upgrader.Upgrade(c.Writer, c.Request, nil)
 		if err != nil {
 			fmt.Printf("failed to upgrade websocket: %v\n", err)
@@ -70,7 +69,6 @@ func ConsoleWS(conn types.Conn) gin.HandlerFunc {
 			})
 		}
 
-		// Goroutine: Proxmox terminal -> Client
 		go func() {
 			defer closeDone()
 			for {
@@ -94,7 +92,6 @@ func ConsoleWS(conn types.Conn) gin.HandlerFunc {
 			}
 		}()
 
-		// Main Goroutine: Client -> Proxmox terminal
 		for {
 			_, p, err := ws.ReadMessage()
 			if err != nil {
@@ -166,7 +163,6 @@ func VNCWS(conn types.Conn) gin.HandlerFunc {
 			})
 		}
 
-		// Proxmox VNC -> Client
 		go func() {
 			defer closeDone()
 			for {
@@ -189,7 +185,6 @@ func VNCWS(conn types.Conn) gin.HandlerFunc {
 			}
 		}()
 
-		// Client -> Proxmox VNC
 		for {
 			_, p, err := ws.ReadMessage()
 			if err != nil {

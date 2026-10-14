@@ -13,7 +13,7 @@ import (
 
 func verifyOwner(vm *proxmox.VirtualMachine, userUUID string) bool {
 	if userUUID == "" {
-		return true // skip if not provided
+		return true
 	}
 	tags := strings.Split(vm.Tags, ";")
 	for _, tag := range tags {
@@ -24,7 +24,6 @@ func verifyOwner(vm *proxmox.VirtualMachine, userUUID string) bool {
 	return false
 }
 
-// ParseVLAN extracts the VLAN tag from a Proxmox network interface config string.
 func ParseVLAN(netConfig string) int {
 	parts := strings.Split(netConfig, ",")
 	for _, part := range parts {
@@ -37,7 +36,6 @@ func ParseVLAN(netConfig string) int {
 	return 0
 }
 
-// AddNIC allocates and attaches a new virtual NIC to the VM.
 func AddNIC(conn types.Conn, userUUID string, vmID string) (string, error) {
 	id, err := strconv.Atoi(vmID)
 	if err != nil {
@@ -77,7 +75,6 @@ func AddNIC(conn types.Conn, userUUID string, vmID string) (string, error) {
 	return netKey, nil
 }
 
-// RemoveNIC deletes a specific network interface from a VM.
 func RemoveNIC(conn types.Conn, userUUID string, vmID string, nic string) error {
 	id, err := strconv.Atoi(vmID)
 	if err != nil {
@@ -115,7 +112,6 @@ func RemoveNIC(conn types.Conn, userUUID string, vmID string, nic string) error 
 	return nil
 }
 
-// DisconnectVLAN disconnects the network link between two VMs by deleting the shared VLAN interfaces.
 func DisconnectVLAN(conn types.Conn, userUUID string, vm1id string, vm2id string) error {
 	id1, err := strconv.Atoi(vm1id)
 	if err != nil {
@@ -152,7 +148,6 @@ func DisconnectVLAN(conn types.Conn, userUUID string, vm1id string, vm2id string
 		return nil
 	}
 
-	// Find the shared VLAN tag
 	for net1Key, net1Val := range vm1.VirtualMachineConfig.Nets {
 		tag1 := ParseVLAN(net1Val)
 		if tag1 == 0 {
@@ -161,7 +156,6 @@ func DisconnectVLAN(conn types.Conn, userUUID string, vm1id string, vm2id string
 		for net2Key, net2Val := range vm2.VirtualMachineConfig.Nets {
 			tag2 := ParseVLAN(net2Val)
 			if tag1 == tag2 {
-				// Delete both ends of the connection
 				_ = vm1.ConfigSync(ctx, proxmox.VirtualMachineOption{
 					Name:  "delete",
 					Value: net1Key,

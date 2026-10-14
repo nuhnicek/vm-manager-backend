@@ -110,10 +110,8 @@ func TestLiveVNCProxyVM108(t *testing.T) {
 		t.Fatalf("VNC timeout")
 	}
 
-	// 1. Send client version
 	send <- []byte("RFB 003.008\n")
 
-	// 2. Expect security types
 	var secTypes []byte
 	select {
 	case secTypes = <-recv:
@@ -122,10 +120,8 @@ func TestLiveVNCProxyVM108(t *testing.T) {
 		t.Fatalf("Timeout waiting for security types")
 	}
 
-	// 3. Select security type 2 (VNC Auth)
 	send <- []byte{2}
 
-	// 4. Expect 16-byte challenge
 	var challenge []byte
 	select {
 	case challenge = <-recv:
@@ -138,12 +134,10 @@ func TestLiveVNCProxyVM108(t *testing.T) {
 		t.Fatalf("Expected 16-byte challenge, got %d bytes: %x", len(challenge), challenge)
 	}
 
-	// 5. Encrypt challenge with vnc.Ticket
 	resp := rfbEncrypt(vnc.Ticket, challenge)
 	t.Logf("Encrypted response (%d bytes): %x", len(resp), resp)
 	send <- resp
 
-	// 6. Expect SecurityResult (4 bytes: 0 0 0 0 = OK)
 	var secResult []byte
 	select {
 	case secResult = <-recv:
@@ -158,10 +152,8 @@ func TestLiveVNCProxyVM108(t *testing.T) {
 		t.Fatalf("Authentication failed with result: %v", secResult)
 	}
 
-	// 7. Send ClientInit (shared = 1)
 	send <- []byte{1}
 
-	// 8. Expect ServerInit (framebuffer geometry & name)
 	var serverInit []byte
 	select {
 	case serverInit = <-recv:
@@ -195,7 +187,6 @@ func TestInspectVM108(t *testing.T) {
 		proxmox.WithCredentials(&credentials),
 		proxmox.WithInsecureSkipVerify(),
 	)
-
 
 	conn := types.Conn{Proxmox: client}
 	userUUID := "7c694cfa-66cd-4895-8ba0-676a0b559f59"
@@ -248,7 +239,6 @@ func TestLiveEndpointVNC(t *testing.T) {
 	}
 	t.Logf("Received message type=%d, len=%d, data=%q", messageType, len(data), string(data))
 
-	// RFB Version handshake: client replies with RFB 003.008\n
 	err = ws.WriteMessage(websocket.BinaryMessage, []byte("RFB 003.008\n"))
 	if err != nil {
 		t.Fatalf("Failed to write RFB version: %v", err)
@@ -265,13 +255,11 @@ func TestLiveEndpointVNC(t *testing.T) {
 		t.Fatalf("Expected security type None (1), got %v", data)
 	}
 
-	// Client selects security type 1 (None)
 	err = ws.WriteMessage(websocket.BinaryMessage, []byte{1})
 	if err != nil {
 		t.Fatalf("Failed to select security type 1: %v", err)
 	}
 
-	// Client expects SecurityResult (0 0 0 0)
 	_ = ws.SetReadDeadline(time.Now().Add(5 * time.Second))
 	messageType, data, err = ws.ReadMessage()
 	if err != nil {
@@ -282,13 +270,11 @@ func TestLiveEndpointVNC(t *testing.T) {
 		t.Fatalf("SecurityResult not OK: %v", data)
 	}
 
-	// Client sends ClientInit (shared = 1)
 	err = ws.WriteMessage(websocket.BinaryMessage, []byte{1})
 	if err != nil {
 		t.Fatalf("Failed to send ClientInit: %v", err)
 	}
 
-	// Server sends ServerInit
 	_ = ws.SetReadDeadline(time.Now().Add(5 * time.Second))
 	messageType, data, err = ws.ReadMessage()
 	if err != nil {

@@ -41,6 +41,6 @@ func Enviroment() (error, types.Config) {
 	config.ProxmoxHostURI = proxmoxURI
 	config.ProxmoxUsername = proxmoxUsername
 	config.ProxmoxPassword = proxmoxPassword
-	
+
 	return nil, config
 }

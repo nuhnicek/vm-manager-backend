@@ -8,8 +8,6 @@ import (
 	"vm-manager-backend/types"
 )
 
-// ListTemplates returns all VM templates available in the Proxmox cluster.
-// Templates are global resources for all users and have no owner.
 func ListTemplates(conn types.Conn) ([]types.Vm, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()

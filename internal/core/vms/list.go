@@ -74,8 +74,6 @@ func List(conn types.Conn, uuid string) ([]types.Vm, error) {
 			}
 
 			ramMB := int(i.MaxMem / (1024 * 1024))
-
-			// Fetch the full VM object to access its read-only configuration
 			fullVM, err := node.VirtualMachine(ctx, int(i.VMID))
 
 			if err != nil {

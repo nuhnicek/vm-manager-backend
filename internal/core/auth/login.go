@@ -20,11 +20,9 @@ type UserDocument struct {
 func Login(email string, password string, conn types.Conn) (error, string) {
 	var user UserDocument
 	coll := conn.Mongo.Database("lab411").Collection("users")
-	filter := bson.D{
-		{"$and", bson.A{
-			bson.D{{"email", email}},
-			bson.D{{"password", pkg.SHA256(password)}},
-		}},
+	filter := bson.M{
+		"email":    email,
+		"password": pkg.SHA256(password),
 	}
 	result := coll.FindOne(context.TODO(), filter)
 	err := result.Decode(&user)
