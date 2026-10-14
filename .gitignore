@@ -1,0 +1,24 @@
+# Binaries and compiled outputs
+main
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+bin/
+
+# Environment variables and local secrets
+.env
+*.env.local
+
+# IDE, Editor, and OS metadata
+.idea/
+.vscode/
+*.swp
+*~
+.DS_Store
+Thumbs.db
+
+# Test coverage and profiles
+*.out
+*.test
