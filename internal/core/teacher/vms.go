@@ -17,7 +17,7 @@ func TeacherBulkAction(conn types.Conn, action string) error {
 	case "stop_all":
 		for _, vm := range allVMs {
 			if strings.EqualFold(vm.Status, "running") {
-				_ = vms.StopVM(conn, "", int(vm.Id))
+				_ = vms.StopVM(conn, "", "teacher", int(vm.Id))
 			}
 		}
 		return nil

@@ -10,8 +10,6 @@ import (
 	"github.com/luthermonson/go-proxmox"
 )
 
-// ExtractUUIDFromTags parses the tag string and returns a UUID if present,
-// otherwise generates a stable fallback identifier like "tpl-<vmid>".
 func ExtractUUIDFromTags(tags string, vmid uint64) string {
 	tagList := strings.Split(tags, ";")
 	for _, tag := range tagList {
@@ -29,7 +27,6 @@ func ExtractUUIDFromTags(tags string, vmid uint64) string {
 	return fmt.Sprintf("tpl-%d", vmid)
 }
 
-// GetClusterNodes returns all online proxmox nodes in the cluster.
 func GetClusterNodes(ctx context.Context, client *proxmox.Client) ([]*proxmox.Node, error) {
 	if client == nil {
 		return nil, fmt.Errorf("proxmox client is nil")
@@ -56,14 +53,11 @@ func GetClusterNodes(ctx context.Context, client *proxmox.Client) ([]*proxmox.No
 	return activeNodes, nil
 }
 
-// FindVMNode dynamically locates the node and VirtualMachine instance for a given VMID
-// across any node in the Proxmox cluster without requiring hardcoded node names.
 func FindVMNode(ctx context.Context, client *proxmox.Client, vmid int) (*proxmox.Node, *proxmox.VirtualMachine, error) {
 	if client == nil {
 		return nil, nil, fmt.Errorf("proxmox client is nil")
 	}
 
-	// 1. First, check Proxmox cluster resources (fastest, covers all nodes in one API call)
 	cCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	cluster, cErr := client.Cluster(cCtx)
 	if cErr == nil && cluster != nil {
@@ -84,7 +78,6 @@ func FindVMNode(ctx context.Context, client *proxmox.Client, vmid int) (*proxmox
 	}
 	cancel()
 
-	// 2. Fallback: query each active node individually
 	nodes, err := GetClusterNodes(ctx, client)
 	if err == nil {
 		for _, node := range nodes {
@@ -98,8 +91,6 @@ func FindVMNode(ctx context.Context, client *proxmox.Client, vmid int) (*proxmox
 	return nil, nil, fmt.Errorf("VM %d not found on any active node in Proxmox cluster", vmid)
 }
 
-// FindVMInConn searches for a VM across all nodes in the multi-node pool (if active)
-// or across nodes in the single Proxmox cluster.
 func FindVMInConn(ctx context.Context, conn types.Conn, vmid int) (*proxmox.Node, *proxmox.VirtualMachine, error) {
 	if conn.NodePool != nil {
 		_, node, vm, err := conn.NodePool.FindVM(ctx, vmid)

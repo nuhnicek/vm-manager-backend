@@ -13,23 +13,20 @@ import (
 	"go.mongodb.org/mongo-driver/v2/mongo"
 )
 
-// PVENodeInstance wraps a standalone Proxmox client and its runtime metrics.
 type PVENodeInstance struct {
 	Config    types.StandaloneNode
 	Client    *proxmox.Client
-	NodeName  string // Resolved PVE host name (e.g., "pve1")
+	NodeName  string
 	Telemetry types.NodeTelemetry
 }
 
-// PVENodePool manages connections and load telemetry across multiple independent PVE nodes.
 type PVENodePool struct {
 	mu     sync.RWMutex
-	nodes  map[string]*PVENodeInstance // keyed by StandaloneNode.ID
+	nodes  map[string]*PVENodeInstance
 	mongo  *mongo.Client
 	stopCh chan struct{}
 }
 
-// NewPVENodePool initializes the multi-node manager and loads persisted nodes from MongoDB.
 func NewPVENodePool(mongoClient *mongo.Client, initialNode types.StandaloneNode) *PVENodePool {
 	pool := &PVENodePool{
 		nodes:  make(map[string]*PVENodeInstance),
@@ -37,12 +34,10 @@ func NewPVENodePool(mongoClient *mongo.Client, initialNode types.StandaloneNode)
 		stopCh: make(chan struct{}),
 	}
 
-	// Register the primary node configured in .env
 	if initialNode.HostURI != "" {
 		_ = pool.registerNodeInternal(context.Background(), initialNode, false)
 	}
 
-	// Load any additional standalone nodes saved in MongoDB
 	if mongoClient != nil {
 		coll := mongoClient.Database("lab411").Collection("pve_nodes")
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -61,18 +56,15 @@ func NewPVENodePool(mongoClient *mongo.Client, initialNode types.StandaloneNode)
 		}
 	}
 
-	// Initial synchronous telemetry refresh
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	pool.RefreshTelemetry(ctx)
 	cancel()
 
-	// Start background polling worker
 	go pool.telemetryWorker()
 
 	return pool
 }
 
-// telemetryWorker periodically updates load and health metrics from all nodes every 20 seconds.
 func (p *PVENodePool) telemetryWorker() {
 	ticker := time.NewTicker(20 * time.Second)
 	defer ticker.Stop()
@@ -89,7 +81,6 @@ func (p *PVENodePool) telemetryWorker() {
 	}
 }
 
-// Close terminates the background telemetry worker.
 func (p *PVENodePool) Close() {
 	close(p.stopCh)
 }
@@ -112,14 +103,13 @@ func (p *PVENodePool) registerNodeInternal(ctx context.Context, node types.Stand
 		proxmox.WithInsecureSkipVerify(),
 	)
 
-	// Discover resolved node name
 	nodeName := node.Name
 	if nodeName == "" {
 		nodeStatuses, err := client.Nodes(ctx)
 		if err == nil && len(nodeStatuses) > 0 {
 			nodeName = nodeStatuses[0].Node
 		} else {
-			nodeName = "pve" // default fallback
+			nodeName = "pve"
 		}
 	}
 	node.Name = nodeName
@@ -156,12 +146,10 @@ func (p *PVENodePool) registerNodeInternal(ctx context.Context, node types.Stand
 	return nil
 }
 
-// RegisterNode adds a new standalone Proxmox node to the pool and persists it in MongoDB.
 func (p *PVENodePool) RegisterNode(ctx context.Context, node types.StandaloneNode) error {
 	return p.registerNodeInternal(ctx, node, true)
 }
 
-// RemoveNode unregisters a node from the pool and deletes it from MongoDB.
 func (p *PVENodePool) RemoveNode(ctx context.Context, nodeID string) error {
 	p.mu.Lock()
 	delete(p.nodes, nodeID)
@@ -175,7 +163,6 @@ func (p *PVENodePool) RemoveNode(ctx context.Context, nodeID string) error {
 	return nil
 }
 
-// RefreshTelemetry queries all nodes in parallel and updates their resource usage and templates.
 func (p *PVENodePool) RefreshTelemetry(ctx context.Context) {
 	p.mu.RLock()
 	instances := make([]*PVENodeInstance, 0, len(p.nodes))
@@ -198,7 +185,7 @@ func (p *PVENodePool) RefreshTelemetry(ctx context.Context) {
 func (p *PVENodePool) pollSingleNodeTelemetry(ctx context.Context, inst *PVENodeInstance) {
 	nodeObj, err := inst.Client.Node(ctx, inst.NodeName)
 	if err != nil {
-		// Try discovering nodes again if name changed
+
 		if ns, nErr := inst.Client.Nodes(ctx); nErr == nil && len(ns) > 0 {
 			inst.NodeName = ns[0].Node
 			nodeObj, err = inst.Client.Node(ctx, inst.NodeName)
@@ -216,7 +203,6 @@ func (p *PVENodePool) pollSingleNodeTelemetry(ctx context.Context, inst *PVENode
 		return
 	}
 
-	// 1. Fetch node memory and CPU status
 	totalRAMMB := 0
 	freeRAMMB := 0
 	usedRAMMB := 0
@@ -235,7 +221,6 @@ func (p *PVENodePool) pollSingleNodeTelemetry(ctx context.Context, inst *PVENode
 		cpuUsagePct = nodeObj.CPU * 100.0
 	}
 
-	// 2. Fetch virtual machines to count load and identify available templates
 	vms, err := nodeObj.VirtualMachines(ctx)
 	activeCount := 0
 	totalCount := 0
@@ -273,7 +258,6 @@ func (p *PVENodePool) pollSingleNodeTelemetry(ctx context.Context, inst *PVENode
 	p.mu.Unlock()
 }
 
-// GetTelemetry returns the current snapshot of telemetry across all registered standalone nodes.
 func (p *PVENodePool) GetTelemetry(ctx context.Context) []types.NodeTelemetry {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
@@ -285,7 +269,6 @@ func (p *PVENodePool) GetTelemetry(ctx context.Context) []types.NodeTelemetry {
 	return result
 }
 
-// GetClientForNode returns the Proxmox client and node object for a specific node ID or name.
 func (p *PVENodePool) GetClientForNode(nodeID string) (*proxmox.Client, *proxmox.Node, error) {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
@@ -301,7 +284,6 @@ func (p *PVENodePool) GetClientForNode(nodeID string) (*proxmox.Client, *proxmox
 	return nil, nil, fmt.Errorf("node %s not found in pool", nodeID)
 }
 
-// FindVM searches across all standalone nodes in parallel for the given VMID.
 func (p *PVENodePool) FindVM(ctx context.Context, vmid int) (*proxmox.Client, *proxmox.Node, *proxmox.VirtualMachine, error) {
 	p.mu.RLock()
 	instances := make([]*PVENodeInstance, 0, len(p.nodes))
@@ -347,12 +329,10 @@ func (p *PVENodePool) FindVM(ctx context.Context, vmid int) (*proxmox.Client, *p
 	return nil, nil, nil, fmt.Errorf("VM %d not found on any standalone Proxmox node", vmid)
 }
 
-// AllocateVMID delegates to the atomic MongoDB global VMID counter.
 func (p *PVENodePool) AllocateVMID(ctx context.Context) (int, error) {
 	return AllocateGlobalVMID(ctx, p.mongo)
 }
 
-// ListAllTemplates aggregates all templates from all standalone nodes into a unified list.
 func (p *PVENodePool) ListAllTemplates(ctx context.Context) ([]types.Vm, error) {
 	p.mu.RLock()
 	instances := make([]*PVENodeInstance, 0, len(p.nodes))
@@ -405,7 +385,6 @@ func (p *PVENodePool) ListAllTemplates(ctx context.Context) ([]types.Vm, error) 
 	return allTemplates, nil
 }
 
-// GetNodes returns active Proxmox Node objects across all registered standalone servers.
 func (p *PVENodePool) GetNodes(ctx context.Context) []*proxmox.Node {
 	p.mu.RLock()
 	instances := make([]*PVENodeInstance, 0, len(p.nodes))

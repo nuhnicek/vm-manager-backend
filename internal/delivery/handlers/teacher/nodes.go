@@ -7,7 +7,6 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// ListNodes returns real-time load telemetry for all standalone Proxmox nodes.
 func ListNodes(conn types.Conn) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if conn.NodePool == nil {
@@ -19,7 +18,6 @@ func ListNodes(conn types.Conn) gin.HandlerFunc {
 	}
 }
 
-// RegisterNode adds a new standalone Proxmox VE server to the load balancer pool.
 func RegisterNode(conn types.Conn) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var node types.StandaloneNode
@@ -51,7 +49,6 @@ func RegisterNode(conn types.Conn) gin.HandlerFunc {
 	}
 }
 
-// RemoveNode removes a standalone Proxmox server from the pool.
 func RemoveNode(conn types.Conn) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		nodeID := c.Param("id")
@@ -74,7 +71,6 @@ func RemoveNode(conn types.Conn) gin.HandlerFunc {
 	}
 }
 
-// RefreshNodes forces an immediate telemetry refresh on all standalone servers.
 func RefreshNodes(conn types.Conn) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if conn.NodePool != nil {

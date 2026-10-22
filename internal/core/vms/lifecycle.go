@@ -10,9 +10,11 @@ import (
 	"github.com/luthermonson/go-proxmox"
 )
 
-func VerifyVMOwner(vm *proxmox.VirtualMachine, userUUID string, role string) bool {
-	if role == "teacher" {
-		return true
+func VerifyVMOwner(vm *proxmox.VirtualMachine, userUUID string, roles ...string) bool {
+	for _, role := range roles {
+		if role == "teacher" || role == "admin" {
+			return true
+		}
 	}
 	tags := strings.Split(vm.Tags, ";")
 	for _, tag := range tags {

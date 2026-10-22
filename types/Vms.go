@@ -19,7 +19,6 @@ type Vm struct {
 	Name          string                 `json:"name"`
 	Status        string                 `json:"status"`
 	RAM           int                    `json:"ram_mb"`
-	Node          string                 `json:"node,omitempty"`
 	Owner         string                 `json:"owner,omitempty"`
 	Networks      []string               `json:"networks"`
 	AvailableNICs []string               `json:"available_nics"`

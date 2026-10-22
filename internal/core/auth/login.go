@@ -59,3 +59,17 @@ func Login(identifier string, password string, conn types.Conn) (error, string, 
 	}
 	return nil, token, user
 }
+
+func GetUserByUUID(conn types.Conn, uuid string) (*UserDocument, error) {
+	var user UserDocument
+	coll := conn.Mongo.Database("lab411").Collection("users")
+	err := coll.FindOne(context.TODO(), bson.M{"uuid": uuid}).Decode(&user)
+	if err != nil {
+		collUpper := conn.Mongo.Database("lab411").Collection("Users")
+		err = collUpper.FindOne(context.TODO(), bson.M{"uuid": uuid}).Decode(&user)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return &user, nil
+}

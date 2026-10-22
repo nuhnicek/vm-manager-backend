@@ -11,8 +11,6 @@ import (
 	"github.com/luthermonson/go-proxmox"
 )
 
-// ConvertVMToTemplate converts an existing virtual machine into a Proxmox base template.
-// If the VM is currently running, it cleanly stops it before initiating the template conversion.
 func ConvertVMToTemplate(conn types.Conn, userUUID string, vmid int) (*types.Vm, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
@@ -35,12 +33,10 @@ func ConvertVMToTemplate(conn types.Conn, userUUID string, vmid int) (*types.Vm,
 		return nil, fmt.Errorf("VM %d is already a template", vmid)
 	}
 
-	// Verify owner unless teacher/admin
 	if !VerifyVMOwner(vm, userUUID) {
 		return nil, fmt.Errorf("unauthorized: VM %d does not belong to user", vmid)
 	}
 
-	// 1. Ensure VM is stopped before conversion
 	if strings.EqualFold(vm.Status, "running") {
 		stopTask, err := vm.Stop(ctx)
 		if err == nil && stopTask != nil {
@@ -48,7 +44,6 @@ func ConvertVMToTemplate(conn types.Conn, userUUID string, vmid int) (*types.Vm,
 		}
 	}
 
-	// 2. Execute Proxmox convert-to-template API
 	convTask, err := vm.ConvertToTemplate(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert VM %d to template: %w", vmid, err)
@@ -57,7 +52,6 @@ func ConvertVMToTemplate(conn types.Conn, userUUID string, vmid int) (*types.Vm,
 		_ = convTask.WaitFor(ctx, 15)
 	}
 
-	// 3. Tag with template identifier
 	newTag := "template;tpl-" + strconv.Itoa(vmid)
 	if vm.Tags != "" {
 		newTag = vm.Tags + ";" + newTag
@@ -85,8 +79,6 @@ func ConvertVMToTemplate(conn types.Conn, userUUID string, vmid int) (*types.Vm,
 	}, nil
 }
 
-// CloneVMAsTemplate creates a full, standalone clone of an existing VM and converts the clone
-// into a brand new template without altering or locking the original source VM.
 func CloneVMAsTemplate(conn types.Conn, userUUID string, req types.CreateTemplateRequest) (*types.Vm, error) {
 	if req.SourceVMID <= 0 {
 		return nil, fmt.Errorf("source VMID is required")
@@ -116,7 +108,6 @@ func CloneVMAsTemplate(conn types.Conn, userUUID string, req types.CreateTemplat
 		return nil, fmt.Errorf("unauthorized: source VM %d does not belong to user", req.SourceVMID)
 	}
 
-	// 1. Allocate a globally unique VMID
 	var newVMID int
 	if conn.NodePool != nil {
 		newVMID, err = conn.NodePool.AllocateVMID(ctx)
@@ -132,7 +123,6 @@ func CloneVMAsTemplate(conn types.Conn, userUUID string, req types.CreateTemplat
 		return nil, fmt.Errorf("failed to allocate new VMID for template: %w", err)
 	}
 
-	// 2. Clone the VM (Full: true ensures independent disk storage)
 	cloneOpts := &proxmox.VirtualMachineCloneOptions{
 		NewID: newVMID,
 		Name:  req.TemplateName,
@@ -149,13 +139,11 @@ func CloneVMAsTemplate(conn types.Conn, userUUID string, req types.CreateTemplat
 		}
 	}
 
-	// 3. Retrieve the newly created cloned VM
 	clonedVM, err := nodeObj.VirtualMachine(ctx, newVMID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get cloned VM %d: %w", newVMID, err)
 	}
 
-	// 4. Configure optional RAM or description settings
 	var syncOpts []proxmox.VirtualMachineOption
 	syncOpts = append(syncOpts, proxmox.VirtualMachineOption{
 		Name:  "tags",
@@ -175,7 +163,6 @@ func CloneVMAsTemplate(conn types.Conn, userUUID string, req types.CreateTemplat
 	}
 	_ = clonedVM.ConfigSync(ctx, syncOpts...)
 
-	// 5. Convert cloned VM to template
 	convTask, err := clonedVM.ConvertToTemplate(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert cloned VM %d to template: %w", newVMID, err)

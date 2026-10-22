@@ -26,8 +26,7 @@ func SeedDefaultLabs(conn types.Conn) error {
 	}
 
 	if count > 0 {
-		// If templates exist but are referencing a missing template (e.g. legacy 9000),
-		// migrate them to the active template in the cluster!
+
 		if defaultTemplateID > 0 {
 			var existingTemplates []types.LabTemplate
 			cur, err := coll.Find(context.TODO(), bson.M{})

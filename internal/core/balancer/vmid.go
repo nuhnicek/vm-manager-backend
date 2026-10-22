@@ -10,7 +10,6 @@ import (
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
 )
 
-// AllocateGlobalVMID atomically generates a globally unique VMID across all standalone nodes.
 func AllocateGlobalVMID(ctx context.Context, mongoClient *mongo.Client) (int, error) {
 	if mongoClient == nil {
 		return 0, fmt.Errorf("mongo client is nil")
@@ -36,7 +35,6 @@ func AllocateGlobalVMID(ctx context.Context, mongoClient *mongo.Client) (int, er
 		return 0, fmt.Errorf("failed to allocate global VMID from mongo: %w", err)
 	}
 
-	// Start sequence from 1000 so it never overlaps with low-range system/local IDs
 	if doc.Seq < 1000 {
 		setFilter := bson.M{"_id": "global_vmid"}
 		setUpdate := bson.M{"$set": bson.M{"seq": 1000}}

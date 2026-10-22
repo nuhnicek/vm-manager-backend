@@ -34,11 +34,6 @@ func RegisterRouter(router *gin.Engine, conn types.Conn) {
 	router.GET("/ping", middleware.Auth(conn), handlers.Main(conn))
 	router.POST("/auth/login", auth.Login(conn))
 	router.GET("/nodes", middleware.Auth(conn), vms.ListNodes(conn))
-	router.GET("/teacher/nodes", middleware.Auth(conn), vms.ListNodes(conn))
-	router.POST("/teacher/nodes/refresh", middleware.Auth(conn), vms.RefreshNodes(conn))
-	router.GET("/teacher/students", middleware.Auth(conn), vms.TeacherStudents(conn))
-	router.GET("/labs/templates", middleware.Auth(conn), vms.ListTemplates(conn))
-	router.GET("/labs/instances", middleware.Auth(conn), vms.List(conn))
 	router.GET("/vms", middleware.Auth(conn), vms.List(conn))
 	router.GET("/vms/templates", middleware.Auth(conn), vms.ListTemplates(conn))
 	router.POST("/vms/create", middleware.Auth(conn), vms.CreateFromTemplate(conn))
@@ -53,7 +48,6 @@ func RegisterRouter(router *gin.Engine, conn types.Conn) {
 	router.GET("/vms/console/ws", middleware.Auth(conn), vms.ConsoleWS(conn))
 	router.GET("/vms/console/vnc", middleware.Auth(conn), vms.VNCWS(conn))
 
-	// Lab Templates & Instances
 	router.GET("/labs/templates", middleware.Auth(conn), labs.ListTemplates(conn))
 	router.GET("/labs/templates/:id", middleware.Auth(conn), labs.GetTemplate(conn))
 	router.POST("/labs/templates", middleware.Auth(conn), middleware.RequireTeacher(conn), labs.CreateTemplate(conn))
@@ -66,17 +60,14 @@ func RegisterRouter(router *gin.Engine, conn types.Conn) {
 	router.POST("/labs/instances/:id/stop", middleware.Auth(conn), labs.StopInstance(conn))
 	router.DELETE("/labs/instances/:id", middleware.Auth(conn), labs.DeleteInstance(conn))
 
-	// Teacher Classroom Management
 	router.GET("/teacher/students", middleware.Auth(conn), middleware.RequireTeacher(conn), teacher.ListStudents(conn))
 	router.POST("/teacher/students", middleware.Auth(conn), middleware.RequireTeacher(conn), teacher.CreateStudent(conn))
 	router.GET("/teacher/vms", middleware.Auth(conn), middleware.RequireTeacher(conn), teacher.ListAllVMs(conn))
 	router.POST("/teacher/vms/bulk-action", middleware.Auth(conn), middleware.RequireTeacher(conn), teacher.BulkAction(conn))
 
-	// Template Creation
 	router.POST("/vms/templates/convert", middleware.Auth(conn), vms.ConvertVMToTemplate(conn))
 	router.POST("/vms/templates/clone-as-template", middleware.Auth(conn), vms.CloneVMAsTemplate(conn))
 
-	// Standalone Proxmox Fleet Management & Load Balancing
 	router.GET("/teacher/nodes", middleware.Auth(conn), middleware.RequireTeacher(conn), teacher.ListNodes(conn))
 	router.POST("/teacher/nodes", middleware.Auth(conn), middleware.RequireTeacher(conn), teacher.RegisterNode(conn))
 	router.DELETE("/teacher/nodes/:id", middleware.Auth(conn), middleware.RequireTeacher(conn), teacher.RemoveNode(conn))

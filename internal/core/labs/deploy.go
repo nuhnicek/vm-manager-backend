@@ -41,7 +41,6 @@ func DeployLab(conn types.Conn, templateID string, targetUserUUID string, target
 		}
 	}
 
-	// 1. Select the optimal node with enough RAM to host the entire lab topology (Lab Affinity)
 	var preferredNode *proxmox.Node
 	if conn.NodePool != nil {
 		_, preferredNode, _, _ = conn.NodePool.SelectNode(ctx, types.NodePlacementRequest{
@@ -58,7 +57,6 @@ func DeployLab(conn types.Conn, templateID string, targetUserUUID string, target
 		var node *proxmox.Node
 		var baseVM *proxmox.VirtualMachine
 
-		// Try preferred node first if assigned by load balancer
 		if preferredNode != nil {
 			if vmObj, err := preferredNode.VirtualMachine(ctx, targetTemplateID); err == nil && vmObj != nil && vmObj.Template {
 				node = preferredNode
@@ -86,7 +84,6 @@ func DeployLab(conn types.Conn, templateID string, targetUserUUID string, target
 			return nil, fmt.Errorf("no valid Proxmox VM template available to clone node '%s' (specified ID %d)", vmTpl.Name, vmTpl.TemplateID)
 		}
 
-		// 2. Allocate collision-free VMID
 		var nextID int
 		if conn.NodePool != nil {
 			nextID, err = conn.NodePool.AllocateVMID(ctx)

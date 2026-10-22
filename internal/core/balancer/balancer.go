@@ -15,8 +15,6 @@ type scoredCandidate struct {
 	score    float64
 }
 
-// SelectNode evaluates all independent standalone nodes and selects the optimal node
-// based on free RAM headroom, CPU utilization, active VM load, and template availability.
 func (p *PVENodePool) SelectNode(ctx context.Context, req types.NodePlacementRequest) (*proxmox.Client, *proxmox.Node, string, error) {
 	p.mu.RLock()
 	instances := make([]*PVENodeInstance, 0, len(p.nodes))
@@ -29,7 +27,6 @@ func (p *PVENodePool) SelectNode(ctx context.Context, req types.NodePlacementReq
 		return nil, nil, "", fmt.Errorf("no Proxmox standalone nodes configured in pool")
 	}
 
-	// 1. Direct match if a specific node was requested
 	if req.PreferNodeID != "" {
 		for _, inst := range instances {
 			if (inst.Config.ID == req.PreferNodeID || inst.NodeName == req.PreferNodeID) && inst.Config.IsActive {
@@ -50,7 +47,6 @@ func (p *PVENodePool) SelectNode(ctx context.Context, req types.NodePlacementReq
 			continue
 		}
 
-		// Verify base template presence on this standalone node
 		if req.RequiredTemplateID > 0 {
 			hasTemplate := false
 			for _, tplID := range inst.Telemetry.Templates {
@@ -65,7 +61,6 @@ func (p *PVENodePool) SelectNode(ctx context.Context, req types.NodePlacementReq
 			}
 		}
 
-		// Verify memory capacity (with a 256MB safety buffer for host OS stability)
 		effectiveFreeRAM := inst.Telemetry.FreeRAMMB - 256
 		if req.RequiredRAMMB > 0 && effectiveFreeRAM < req.RequiredRAMMB {
 			lowMemoryNodes = append(lowMemoryNodes, fmt.Sprintf("%s (free: %dMB, req: %dMB)", inst.NodeName, inst.Telemetry.FreeRAMMB, req.RequiredRAMMB))
@@ -81,8 +76,6 @@ func (p *PVENodePool) SelectNode(ctx context.Context, req types.NodePlacementReq
 			continue
 		}
 
-		// Compute load-balancing placement score
-		// Higher score = better placement candidate
 		weight := float64(inst.Config.Weight)
 		if weight <= 0 {
 			weight = 100.0
@@ -112,7 +105,6 @@ func (p *PVENodePool) SelectNode(ctx context.Context, req types.NodePlacementReq
 		return nil, nil, "", fmt.Errorf("no healthy standalone Proxmox nodes available matching placement criteria")
 	}
 
-	// Sort candidates descending by score
 	sort.Slice(candidates, func(i, j int) bool {
 		return candidates[i].score > candidates[j].score
 	})

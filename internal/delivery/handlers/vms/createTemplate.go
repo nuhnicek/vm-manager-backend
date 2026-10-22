@@ -12,7 +12,6 @@ type convertVMBody struct {
 	VMID int `json:"vmid" binding:"required"`
 }
 
-// ConvertVMToTemplate handles converting an existing stopped VM into a template.
 func ConvertVMToTemplate(conn types.Conn) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var body convertVMBody
@@ -27,7 +26,7 @@ func ConvertVMToTemplate(conn types.Conn) gin.HandlerFunc {
 		userRole, _ := c.Get("role")
 		roleStr, _ := userRole.(string)
 		if roleStr == "teacher" {
-			uuidStr = "" // Teachers have unrestricted access
+			uuidStr = ""
 		}
 
 		template, err := vms.ConvertVMToTemplate(conn, uuidStr, body.VMID)
@@ -43,7 +42,6 @@ func ConvertVMToTemplate(conn types.Conn) gin.HandlerFunc {
 	}
 }
 
-// CloneVMAsTemplate handles cloning a VM to a new ID and converting the clone into a template.
 func CloneVMAsTemplate(conn types.Conn) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req types.CreateTemplateRequest

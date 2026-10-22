@@ -1,6 +1,9 @@
 package bootstrap
 
 import (
+	"context"
+	"vm-manager-backend/internal/core/balancer"
+	"vm-manager-backend/internal/core/labs"
 	"vm-manager-backend/types"
 
 	"github.com/gin-gonic/gin"
@@ -40,6 +43,33 @@ func Initialize(router *gin.Engine) (error, types.Config) {
 	if config.ProxmoxNode != "" {
 		conn.ProxmoxNode = config.ProxmoxNode
 	}
+
+	initialNode := types.StandaloneNode{
+		ID:       "node-primary",
+		Name:     conn.ProxmoxNode,
+		HostURI:  config.ProxmoxHostURI,
+		Username: config.ProxmoxUsername,
+		Password: config.ProxmoxPassword,
+		Weight:   100,
+		IsActive: true,
+	}
+	nodePool := balancer.NewPVENodePool(conn.Mongo, initialNode)
+	for idx, p := range conn.Pool {
+		if idx > 0 {
+			_ = nodePool.RegisterNode(context.Background(), types.StandaloneNode{
+				ID:       "node-" + p.NodeName,
+				Name:     p.NodeName,
+				HostURI:  p.HostURI,
+				Username: config.ProxmoxUsername,
+				Password: config.ProxmoxPassword,
+				Weight:   100,
+				IsActive: true,
+			})
+		}
+	}
+	conn.NodePool = nodePool
+
+	_ = labs.SeedDefaultLabs(conn)
 
 	RegisterRouter(router, conn)
 	return nil, config

@@ -28,3 +28,20 @@ func Auth(conn types.Conn) gin.HandlerFunc {
 		c.Next()
 	}
 }
+
+func RequireTeacher(conn types.Conn) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		roleVal, exists := c.Get("role")
+		if !exists {
+			c.AbortWithStatus(http.StatusUnauthorized)
+			return
+		}
+		role, ok := roleVal.(string)
+		if !ok || (role != "teacher" && role != "admin") {
+			c.JSON(http.StatusForbidden, gin.H{"error": "forbidden: teacher role required"})
+			c.Abort()
+			return
+		}
+		c.Next()
+	}
+}

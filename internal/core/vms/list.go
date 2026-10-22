@@ -26,7 +26,14 @@ func parseVLAN(netConfig string) int {
 	return 0
 }
 
-func List(conn types.Conn, uuid string, role string) ([]types.Vm, error) {
+func List(conn types.Conn, uuid string, roles ...string) ([]types.Vm, error) {
+	role := ""
+	if len(roles) > 0 {
+		role = roles[0]
+	}
+	if uuid == "" && role == "" {
+		role = "teacher"
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 

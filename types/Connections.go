@@ -23,6 +23,7 @@ type Conn struct {
 	Proxmox     *proxmox.Client
 	ProxmoxNode string
 	Pool        []ProxmoxNodeClient
+	NodePool    NodePoolInterface
 }
 
 func (c Conn) GetPool() []ProxmoxNodeClient {

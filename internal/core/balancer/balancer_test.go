@@ -26,7 +26,6 @@ func TestNodeScoringAndPlacement(t *testing.T) {
 		nodes: make(map[string]*PVENodeInstance),
 	}
 
-	// Node 1: High RAM, low CPU, has template 101
 	pool.nodes["node-1"] = &PVENodeInstance{
 		Config: types.StandaloneNode{
 			ID:       "node-1",
@@ -50,7 +49,6 @@ func TestNodeScoringAndPlacement(t *testing.T) {
 		},
 	}
 
-	// Node 2: Low RAM, high CPU, has template 101
 	pool.nodes["node-2"] = &PVENodeInstance{
 		Config: types.StandaloneNode{
 			ID:       "node-2",
@@ -74,7 +72,6 @@ func TestNodeScoringAndPlacement(t *testing.T) {
 		},
 	}
 
-	// Node 3: Offline node
 	pool.nodes["node-3"] = &PVENodeInstance{
 		Config: types.StandaloneNode{
 			ID:       "node-3",
@@ -92,7 +89,6 @@ func TestNodeScoringAndPlacement(t *testing.T) {
 		},
 	}
 
-	// Node 4: High RAM, but missing template 101
 	pool.nodes["node-4"] = &PVENodeInstance{
 		Config: types.StandaloneNode{
 			ID:       "node-4",
@@ -107,19 +103,16 @@ func TestNodeScoringAndPlacement(t *testing.T) {
 			IsOnline:      true,
 			TotalRAMMB:    131072,
 			FreeRAMMB:     90000,
-			Templates:     []int{999}, // does NOT have 101
+			Templates:     []int{999},
 			LastUpdated:   time.Now(),
 		},
 	}
 
-	// Test 1: Require template 101 and 2048 MB RAM
 	req := types.NodePlacementRequest{
 		RequiredTemplateID: 101,
 		RequiredRAMMB:      2048,
 	}
 
-	// Node 1 should win easily over Node 2 because Node 1 has 40GB free RAM vs 4GB and lower CPU.
-	// Node 3 is offline, Node 4 lacks template 101.
 	client, node, nodeName, err := pool.SelectNode(context.Background(), req)
 	if err != nil {
 		t.Fatalf("expected SelectNode to succeed, got error: %v", err)
@@ -131,7 +124,6 @@ func TestNodeScoringAndPlacement(t *testing.T) {
 		t.Errorf("expected non-nil client and node, got client=%v, node=%v", client, node)
 	}
 
-	// Test 2: Request 50000 MB RAM (more than Node 1 has free: 40000MB)
 	reqHuge := types.NodePlacementRequest{
 		RequiredTemplateID: 101,
 		RequiredRAMMB:      50000,
@@ -141,7 +133,6 @@ func TestNodeScoringAndPlacement(t *testing.T) {
 		t.Errorf("expected failure when RAM headroom is insufficient, but got no error")
 	}
 
-	// Test 3: Request template that does not exist anywhere
 	reqMissingTpl := types.NodePlacementRequest{
 		RequiredTemplateID: 555,
 		RequiredRAMMB:      1024,

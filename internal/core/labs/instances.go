@@ -53,12 +53,14 @@ func StartLabInstance(conn types.Conn, instanceID string, userUUID string, isTea
 	}
 
 	authUUID := userUUID
+	role := ""
 	if isTeacher {
 		authUUID = ""
+		role = "teacher"
 	}
 
 	for _, vmItem := range instance.VMs {
-		_ = vms.StartVM(conn, authUUID, vmItem.VMID)
+		_ = vms.StartVM(conn, authUUID, role, vmItem.VMID)
 	}
 
 	coll := conn.Mongo.Database("lab411").Collection("lab_instances")
@@ -76,12 +78,14 @@ func StopLabInstance(conn types.Conn, instanceID string, userUUID string, isTeac
 	}
 
 	authUUID := userUUID
+	role := ""
 	if isTeacher {
 		authUUID = ""
+		role = "teacher"
 	}
 
 	for _, vmItem := range instance.VMs {
-		_ = vms.StopVM(conn, authUUID, vmItem.VMID)
+		_ = vms.StopVM(conn, authUUID, role, vmItem.VMID)
 	}
 
 	coll := conn.Mongo.Database("lab411").Collection("lab_instances")
@@ -99,12 +103,14 @@ func DeleteLabInstance(conn types.Conn, instanceID string, userUUID string, isTe
 	}
 
 	authUUID := userUUID
+	role := ""
 	if isTeacher {
 		authUUID = ""
+		role = "teacher"
 	}
 
 	for _, vmItem := range instance.VMs {
-		_ = vms.DeleteVM(conn, authUUID, vmItem.VMID)
+		_ = vms.DeleteVM(conn, authUUID, role, vmItem.VMID)
 	}
 
 	coll := conn.Mongo.Database("lab411").Collection("lab_instances")
