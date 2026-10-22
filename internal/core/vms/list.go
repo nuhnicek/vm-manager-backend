@@ -7,9 +7,6 @@ import (
 	"strings"
 	"time"
 	"vm-manager-backend/types"
-
-	"github.com/luthermonson/go-proxmox"
-	"go.mongodb.org/mongo-driver/v2/bson"
 )
 
 type vmNetEndpoint struct {
@@ -29,34 +26,9 @@ func parseVLAN(netConfig string) int {
 	return 0
 }
 
-func List(conn types.Conn, uuid string) ([]types.Vm, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+func List(conn types.Conn, uuid string, role string) ([]types.Vm, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
-
-	var nodes []*proxmox.Node
-	var err error
-	if conn.NodePool != nil {
-		nodes = conn.NodePool.GetNodes(ctx)
-	}
-	if len(nodes) == 0 {
-		nodes, err = GetClusterNodes(ctx, conn.Proxmox)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	userEmailMap := make(map[string]string)
-	if coll := conn.Mongo.Database("lab411").Collection("users"); coll != nil {
-		cursor, err := coll.Find(ctx, bson.M{})
-		if err == nil {
-			var users []types.UserDocument
-			if err := cursor.All(ctx, &users); err == nil {
-				for _, u := range users {
-					userEmailMap[u.UUID] = u.Email
-				}
-			}
-		}
-	}
 
 	type rawVMData struct {
 		vm      types.Vm
@@ -66,91 +38,89 @@ func List(conn types.Conn, uuid string) ([]types.Vm, error) {
 	var rawList []rawVMData
 	tagMap := make(map[int][]vmNetEndpoint)
 
-	for _, node := range nodes {
+	pool := conn.GetPool()
+	for _, nc := range pool {
+		node, err := nc.Client.Node(ctx, nc.NodeName)
+		if err != nil {
+			continue
+		}
+
 		vms, err := node.VirtualMachines(ctx)
 		if err != nil {
 			continue
 		}
 
 		for _, i := range vms {
-			if bool(i.Template) {
+			if i.Template {
 				continue
 			}
-		var ownerUUID, vmUUID, labID string
+			var ownerUUID, vmUUID string
 
-		tags := strings.Split(i.Tags, ";")
-		for _, tag := range tags {
-			trimmed := strings.TrimSpace(tag)
-			if strings.HasPrefix(trimmed, "owner-") {
-				ownerUUID = strings.TrimPrefix(trimmed, "owner-")
-			} else if strings.HasPrefix(trimmed, "vm-") {
-				vmUUID = strings.TrimPrefix(trimmed, "vm-")
-			} else if strings.HasPrefix(trimmed, "lab-") {
-				labID = strings.TrimPrefix(trimmed, "lab-")
-			}
-		}
-
-		if uuid == "" || ownerUUID == uuid {
-			networks := make([]string, 0)
-			availableNICs := make([]string, 0)
-			nicTags := make(map[string]int)
-
-			status := "Stopped"
-			if strings.EqualFold(i.Status, "running") {
-				status = "Running"
-			}
-
-			ramMB := int(i.MaxMem / (1024 * 1024))
-			fullVM, err := node.VirtualMachine(ctx, int(i.VMID))
-
-			if err != nil {
-				fmt.Printf("failed to get vm %d: %v\n", i.VMID, err)
-			} else if fullVM.VirtualMachineConfig != nil {
-				if fullVM.VirtualMachineConfig.Memory > 0 {
-					ramMB = int(fullVM.VirtualMachineConfig.Memory)
+			tags := strings.Split(i.Tags, ";")
+			for _, tag := range tags {
+				trimmed := strings.TrimSpace(tag)
+				if strings.HasPrefix(trimmed, "owner-") {
+					ownerUUID = strings.TrimPrefix(trimmed, "owner-")
+				} else if strings.HasPrefix(trimmed, "vm-") {
+					vmUUID = strings.TrimPrefix(trimmed, "vm-")
 				}
-				if fullVM.VirtualMachineConfig.Nets != nil {
-					for j := 0; j <= 31; j++ {
-						netKey := fmt.Sprintf("net%d", j)
-						if netVal, exists := fullVM.VirtualMachineConfig.Nets[netKey]; exists {
-							networks = append(networks, fmt.Sprintf("%s: %s", netKey, netVal))
-							availableNICs = append(availableNICs, netKey)
-							tag := parseVLAN(netVal)
-							if tag > 0 {
-								nicTags[netKey] = tag
-								tagMap[tag] = append(tagMap[tag], vmNetEndpoint{
-									vmID: fmt.Sprint(i.VMID),
-									nic:  netKey,
-								})
+			}
+
+			if role == "teacher" || ownerUUID == uuid {
+				networks := make([]string, 0)
+				availableNICs := make([]string, 0)
+				nicTags := make(map[string]int)
+
+				status := "Stopped"
+				if strings.EqualFold(i.Status, "running") {
+					status = "Running"
+				}
+
+				ramMB := int(i.MaxMem / (1024 * 1024))
+				fullVM, err := node.VirtualMachine(ctx, int(i.VMID))
+
+				if err == nil && fullVM.VirtualMachineConfig != nil {
+					if fullVM.VirtualMachineConfig.Memory > 0 {
+						ramMB = int(fullVM.VirtualMachineConfig.Memory)
+					}
+					if fullVM.VirtualMachineConfig.Nets != nil {
+						for j := 0; j <= 31; j++ {
+							netKey := fmt.Sprintf("net%d", j)
+							if netVal, exists := fullVM.VirtualMachineConfig.Nets[netKey]; exists {
+								networks = append(networks, fmt.Sprintf("%s: %s", netKey, netVal))
+								availableNICs = append(availableNICs, netKey)
+								tag := parseVLAN(netVal)
+								if tag > 0 {
+									nicTags[netKey] = tag
+									tagMap[tag] = append(tagMap[tag], vmNetEndpoint{
+										vmID: fmt.Sprint(i.VMID),
+										nic:  netKey,
+									})
+								}
 							}
 						}
 					}
 				}
+
+				vm := types.Vm{
+					Id:            i.VMID,
+					Name:          i.Name,
+					UUID:          vmUUID,
+					Status:        status,
+					RAM:           ramMB,
+					Node:          nc.NodeName,
+					Owner:         ownerUUID,
+					Networks:      networks,
+					AvailableNICs: availableNICs,
+					Connections:   make([]types.VMConnection, 0),
+				}
+
+				rawList = append(rawList, rawVMData{
+					vm:      vm,
+					nicTags: nicTags,
+				})
 			}
-
-			ownerEmail := userEmailMap[ownerUUID]
-
-			vm := types.Vm{
-				Id:            i.VMID,
-				Name:          i.Name,
-				UUID:          vmUUID,
-				OwnerUUID:     ownerUUID,
-				OwnerEmail:    ownerEmail,
-				LabID:         labID,
-				Node:          node.Name,
-				Status:        status,
-				RAM:           ramMB,
-				Networks:      networks,
-				AvailableNICs: availableNICs,
-				Connections:   make([]types.VMConnection, 0),
-			}
-
-			rawList = append(rawList, rawVMData{
-				vm:      vm,
-				nicTags: nicTags,
-			})
 		}
-	}
 	}
 
 	var machines []types.Vm

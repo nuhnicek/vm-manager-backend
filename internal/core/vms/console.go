@@ -24,20 +24,20 @@ type ConsoleStream struct {
 	Close func() error
 }
 
-func OpenVMConsole(conn types.Conn, userUUID string, vmid int) (*ConsoleStream, error) {
+func OpenVMConsole(conn types.Conn, userUUID string, role string, vmid int) (*ConsoleStream, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	_, vm, err := FindVMInConn(ctx, conn, vmid)
+	vm, nodeClient, err := conn.FindVM(ctx, vmid)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to get VM %d: %w", vmid, err)
 	}
 
 	if vm.Template {
 		return nil, fmt.Errorf("cannot open console on template %d", vmid)
 	}
 
-	if !VerifyVMOwner(vm, userUUID) {
+	if !VerifyVMOwner(vm, userUUID, role) {
 		return nil, fmt.Errorf("unauthorized: VM %d does not belong to user", vmid)
 	}
 
@@ -58,9 +58,14 @@ func OpenVMConsole(conn types.Conn, userUUID string, vmid int) (*ConsoleStream, 
 		return nil, fmt.Errorf("failed to initialize termproxy: %w", err)
 	}
 
-	rawURL := os.Getenv("PROXMOX_URI")
-	if rawURL == "" {
-		rawURL = "https://10.0.1.37:8006/api2/json"
+	rawURL := ""
+	if nodeClient != nil && nodeClient.HostURI != "" {
+		rawURL = nodeClient.HostURI
+	} else {
+		rawURL = os.Getenv("PROXMOX_URI")
+		if idx := strings.Index(rawURL, ","); idx != -1 {
+			rawURL = rawURL[:idx]
+		}
 	}
 	wsBase := strings.TrimRight(strings.Replace(rawURL, "https://", "wss://", 1), "/")
 	wsBase = strings.Replace(wsBase, "http://", "ws://", 1)
@@ -74,9 +79,15 @@ func OpenVMConsole(conn types.Conn, userUUID string, vmid int) (*ConsoleStream, 
 	}
 
 	headers := http.Header{}
-	if sess := conn.Proxmox.Session(); sess != nil {
-		headers.Add("Cookie", "PVEAuthCookie="+sess.Ticket)
-		headers.Add("CSRFPreventionToken", sess.CSRFPreventionToken)
+	clientForSession := conn.Proxmox
+	if nodeClient != nil && nodeClient.Client != nil {
+		clientForSession = nodeClient.Client
+	}
+	if clientForSession != nil {
+		if sess := clientForSession.Session(); sess != nil {
+			headers.Add("Cookie", "PVEAuthCookie="+sess.Ticket)
+			headers.Add("CSRFPreventionToken", sess.CSRFPreventionToken)
+		}
 	}
 
 	pveWS, _, err := dialer.Dial(wsURL, headers)
@@ -189,20 +200,20 @@ func OpenVMConsole(conn types.Conn, userUUID string, vmid int) (*ConsoleStream, 
 	}, nil
 }
 
-func OpenVMVNC(conn types.Conn, userUUID string, vmid int) (*ConsoleStream, error) {
+func OpenVMVNC(conn types.Conn, userUUID string, role string, vmid int) (*ConsoleStream, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	_, vm, err := FindVMInConn(ctx, conn, vmid)
+	vm, _, err := conn.FindVM(ctx, vmid)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to get VM %d: %w", vmid, err)
 	}
 
 	if vm.Template {
 		return nil, fmt.Errorf("cannot open console on template %d", vmid)
 	}
 
-	if !VerifyVMOwner(vm, userUUID) {
+	if !VerifyVMOwner(vm, userUUID, role) {
 		return nil, fmt.Errorf("unauthorized: VM %d does not belong to user", vmid)
 	}
 

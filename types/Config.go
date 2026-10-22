@@ -7,4 +7,6 @@ type Config struct {
 	ProxmoxPassword string
 	ProxmoxUsername string
 	ProxmoxHostURI  string
+	ProxmoxNode     string
+	ProxmoxURIs     []string
 }

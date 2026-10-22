@@ -11,6 +11,7 @@ import (
 
 type LoginRequest struct {
 	Email    string `json:"email"`
+	Username string `json:"username"`
 	Password string `json:"password"`
 }
 
@@ -20,19 +21,36 @@ func Login(conn types.Conn) gin.HandlerFunc {
 		err := c.ShouldBindBodyWithJSON(&body)
 		if err != nil {
 			fmt.Println(err)
-			c.Status(http.StatusBadRequest)
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
 			return
 		}
-		err, session, user := auth.Login(body.Email, body.Password, conn)
-		if err != nil {
-			c.Status(http.StatusInternalServerError)
+		identifier := body.Email
+		if identifier == "" {
+			identifier = body.Username
+		}
+		if identifier == "" || body.Password == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "username and password required"})
 			return
+		}
+		err, session, userDoc := auth.Login(identifier, body.Password, conn)
+		if err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid username or password"})
+			return
+		}
+		role := userDoc.Role
+		if role == "" {
+			if userDoc.IsTeacher {
+				role = "teacher"
+			} else {
+				role = "student"
+			}
 		}
 		c.JSON(http.StatusOK, gin.H{
-			"token": session,
-			"uuid":  user.UUID,
-			"email": user.Email,
-			"role":  user.Role,
+			"message": "Login successful",
+			"token":   session,
+			"user":    identifier,
+			"role":    role,
+			"uuid":    userDoc.UUID,
 		})
 	}
 }

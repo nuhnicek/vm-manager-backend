@@ -6,7 +6,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	"vm-manager-backend/internal/core/vms"
 	"vm-manager-backend/types"
 
 	"github.com/luthermonson/go-proxmox"
@@ -46,7 +45,7 @@ func AddNIC(conn types.Conn, userUUID string, vmID string) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	_, vm, err := vms.FindVMNode(ctx, conn.Proxmox, id)
+	vm, _, err := conn.FindVM(ctx, id)
 	if err != nil {
 		return "", fmt.Errorf("failed to get VM %d: %w", id, err)
 	}
@@ -83,7 +82,7 @@ func RemoveNIC(conn types.Conn, userUUID string, vmID string, nic string) error 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	_, vm, err := vms.FindVMNode(ctx, conn.Proxmox, id)
+	vm, _, err := conn.FindVM(ctx, id)
 	if err != nil {
 		return fmt.Errorf("failed to get VM %d: %w", id, err)
 	}
@@ -116,11 +115,11 @@ func DisconnectVLAN(conn types.Conn, userUUID string, vm1id string, vm2id string
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	_, vm1, err := vms.FindVMNode(ctx, conn.Proxmox, id1)
+	vm1, _, err := conn.FindVM(ctx, id1)
 	if err != nil {
 		return fmt.Errorf("failed to get VM %d: %w", id1, err)
 	}
-	_, vm2, err := vms.FindVMNode(ctx, conn.Proxmox, id2)
+	vm2, _, err := conn.FindVM(ctx, id2)
 	if err != nil {
 		return fmt.Errorf("failed to get VM %d: %w", id2, err)
 	}

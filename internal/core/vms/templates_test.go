@@ -18,10 +18,11 @@ func TestLiveProxmoxTemplates(t *testing.T) {
 	_ = godotenv.Load("../../../.env")
 	user := os.Getenv("PROXMOX_USERNAME")
 	pass := os.Getenv("PROXMOX_PASSWORD")
-	uri := os.Getenv("PROXMOX_URI")
-	if user == "" || uri == "" {
+	rawURI := os.Getenv("PROXMOX_URI")
+	if user == "" || rawURI == "" {
 		t.Skip("Proxmox credentials not found in .env")
 	}
+	uri := strings.TrimSpace(strings.Split(rawURI, ",")[0])
 
 	credentials := proxmox.Credentials{
 		Username: user,
@@ -35,44 +36,38 @@ func TestLiveProxmoxTemplates(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	cluster, err := client.Cluster(ctx)
-	if err != nil {
-		t.Fatalf("failed to get cluster: %v", err)
-	}
-
-	resources, err := cluster.Resources(ctx, "vm")
-	if err != nil {
-		t.Fatalf("failed to get cluster resources: %v", err)
-	}
-
-	t.Logf("Discovered %d cluster resources:", len(resources))
-	for _, r := range resources {
-		t.Logf("Resource: VMID=%d, Name=%s, Node=%s, Type=%s, Template=%d, Tags=%s, Status=%s",
-			r.VMID, r.Name, r.Node, r.Type, r.Template, r.Tags, r.Status)
-	}
-
 	conn := types.Conn{Proxmox: client}
-	tpls, err := ListTemplates(conn)
+	node, err := conn.GetNode(ctx)
+	if err != nil {
+		t.Fatalf("failed to get node: %v", err)
+	}
+
+	vms, err := node.VirtualMachines(ctx)
+	if err != nil {
+		t.Fatalf("failed to get vms: %v", err)
+	}
+
+	t.Logf("Found %d total virtual machines in cluster", len(vms))
+	for _, vm := range vms {
+		t.Logf("VM %d: Name=%s, Template=%v, Tags=%s, Status=%s", vm.VMID, vm.Name, vm.Template, vm.Tags, vm.Status)
+	}
+
+	templates, err := ListTemplates(conn)
 	if err != nil {
 		t.Fatalf("ListTemplates failed: %v", err)
 	}
-	t.Logf("ListTemplates returned %d templates:", len(tpls))
-	for _, tpl := range tpls {
-		t.Logf("  Template: VMID=%d, Name=%s, UUID=%s, Node=%s", tpl.Id, tpl.Name, tpl.UUID, tpl.Node)
+	t.Logf("ListTemplates returned %d templates", len(templates))
+	for _, tpl := range templates {
+		t.Logf("Template: ID=%d, Name=%s, UUID=%s", tpl.Id, tpl.Name, tpl.UUID)
 	}
-
-	foundNode, foundVM, err := FindVMNode(ctx, client, 101)
-	if err != nil {
-		t.Fatalf("FindVMNode(101) failed: %v", err)
-	}
-	t.Logf("FindVMNode(101) located VM on Node=%s: Name=%s, Template=%v", foundNode.Name, foundVM.Name, foundVM.Template)
 }
 
 func TestLiveVNCProxyVM108(t *testing.T) {
 	_ = godotenv.Load("../../../.env")
 	user := os.Getenv("PROXMOX_USERNAME")
 	pass := os.Getenv("PROXMOX_PASSWORD")
-	uri := os.Getenv("PROXMOX_URI")
+	rawURI := os.Getenv("PROXMOX_URI")
+	uri := strings.TrimSpace(strings.Split(rawURI, ",")[0])
 
 	credentials := proxmox.Credentials{
 		Username: user,
@@ -86,28 +81,15 @@ func TestLiveVNCProxyVM108(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	cluster, err := client.Cluster(ctx)
+	conn := types.Conn{Proxmox: client}
+	node, err := conn.GetNode(ctx)
 	if err != nil {
-		t.Skipf("cannot access cluster: %v", err)
-	}
-	resources, err := cluster.Resources(ctx, "vm")
-	if err != nil {
-		t.Skipf("cannot access cluster resources: %v", err)
-	}
-	var targetVMID int
-	for _, r := range resources {
-		if strings.EqualFold(r.Status, "running") && r.Template == 0 {
-			targetVMID = int(r.VMID)
-			break
-		}
-	}
-	if targetVMID == 0 {
-		t.Skip("no running VM found in cluster for VNC test")
+		t.Fatalf("failed to get node: %v", err)
 	}
 
-	_, vm, err := FindVMNode(ctx, client, targetVMID)
+	vm, err := node.VirtualMachine(ctx, 108)
 	if err != nil {
-		t.Skipf("failed to find VM %d: %v", targetVMID, err)
+		t.Skipf("VM 108 not found in cluster, skipping live test: %v", err)
 	}
 
 	vnc, err := vm.VNCProxy(ctx, &proxmox.VNCConfig{Websocket: true})
@@ -199,7 +181,8 @@ func TestLiveVNCProxyVM108(t *testing.T) {
 func TestInspectVM108(t *testing.T) {
 	user := os.Getenv("PROXMOX_USERNAME")
 	pass := os.Getenv("PROXMOX_PASSWORD")
-	uri := os.Getenv("PROXMOX_URI")
+	rawURI := os.Getenv("PROXMOX_URI")
+	uri := strings.TrimSpace(strings.Split(rawURI, ",")[0])
 
 	credentials := proxmox.Credentials{
 		Username: user,
@@ -212,10 +195,9 @@ func TestInspectVM108(t *testing.T) {
 
 	conn := types.Conn{Proxmox: client}
 	userUUID := "7c694cfa-66cd-4895-8ba0-676a0b559f59"
-	stream, err := OpenVMConsole(conn, userUUID, 108)
+	stream, err := OpenVMConsole(conn, userUUID, "teacher", 108)
 	if err != nil {
-		t.Skipf("skipping live console inspection (VM 108 not active on this cluster): %v", err)
-		return
+		t.Skipf("OpenVMConsole failed (VM 108 likely not present): %v", err)
 	}
 	defer stream.Close()
 
@@ -233,7 +215,15 @@ func TestInspectVM108(t *testing.T) {
 }
 
 func TestLiveEndpointVNC(t *testing.T) {
-	rdb := redis.NewClient(&redis.Options{Addr: "localhost:6379"})
+	redisURI := os.Getenv("REDIS_URI")
+	if redisURI == "" {
+		redisURI = "redis://localhost:6379/0"
+	}
+	opt, err := redis.ParseURL(redisURI)
+	if err != nil {
+		t.Skipf("Failed to parse Redis URI: %v", err)
+	}
+	rdb := redis.NewClient(opt)
 	keys, err := rdb.Keys(context.Background(), "*").Result()
 	if err != nil || len(keys) == 0 {
 		t.Skip("No active session tokens in Redis to test VNC endpoint")
@@ -244,10 +234,9 @@ func TestLiveEndpointVNC(t *testing.T) {
 	dialer := websocket.Dialer{
 		Subprotocols: []string{"binary"},
 	}
-	ws, resp, err := dialer.Dial(u, nil)
+	ws, _, err := dialer.Dial(u, nil)
 	if err != nil {
-		t.Skipf("skipping live VNC endpoint test: %v (status: %v)", err, resp)
-		return
+		t.Skipf("Backend not running on :8080 or VNC endpoint unavailable: %v", err)
 	}
 	defer ws.Close()
 
@@ -256,8 +245,7 @@ func TestLiveEndpointVNC(t *testing.T) {
 	_ = ws.SetReadDeadline(time.Now().Add(5 * time.Second))
 	messageType, data, err := ws.ReadMessage()
 	if err != nil {
-		t.Skipf("skipping live VNC endpoint: %v", err)
-		return
+		t.Skipf("Failed to read from VNC endpoint (VM 108 likely not present): %v", err)
 	}
 	t.Logf("Received message type=%d, len=%d, data=%q", messageType, len(data), string(data))
 

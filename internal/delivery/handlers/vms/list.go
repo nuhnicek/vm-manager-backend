@@ -11,7 +11,12 @@ import (
 func List(conn types.Conn) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		uuid, _ := c.Get("uuid")
-		vm, err := vms.List(conn, uuid.(string))
+		roleVal, _ := c.Get("role")
+		role := "student"
+		if r, ok := roleVal.(string); ok && r != "" {
+			role = r
+		}
+		vm, err := vms.List(conn, uuid.(string), role)
 		if err != nil {
 			c.Status(http.StatusInternalServerError)
 			return

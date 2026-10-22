@@ -10,8 +10,8 @@ import (
 	"github.com/luthermonson/go-proxmox"
 )
 
-func VerifyVMOwner(vm *proxmox.VirtualMachine, userUUID string) bool {
-	if userUUID == "" {
+func VerifyVMOwner(vm *proxmox.VirtualMachine, userUUID string, role string) bool {
+	if role == "teacher" {
 		return true
 	}
 	tags := strings.Split(vm.Tags, ";")
@@ -23,20 +23,20 @@ func VerifyVMOwner(vm *proxmox.VirtualMachine, userUUID string) bool {
 	return false
 }
 
-func StartVM(conn types.Conn, userUUID string, vmid int) error {
+func StartVM(conn types.Conn, userUUID string, role string, vmid int) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	_, vm, err := FindVMInConn(ctx, conn, vmid)
+	vm, _, err := conn.FindVM(ctx, vmid)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to get VM %d: %w", vmid, err)
 	}
 
 	if vm.Template {
 		return fmt.Errorf("cannot start global template %d", vmid)
 	}
 
-	if !VerifyVMOwner(vm, userUUID) {
+	if !VerifyVMOwner(vm, userUUID, role) {
 		return fmt.Errorf("unauthorized: VM %d does not belong to user", vmid)
 	}
 
@@ -51,20 +51,20 @@ func StartVM(conn types.Conn, userUUID string, vmid int) error {
 	return nil
 }
 
-func StopVM(conn types.Conn, userUUID string, vmid int) error {
+func StopVM(conn types.Conn, userUUID string, role string, vmid int) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	_, vm, err := FindVMInConn(ctx, conn, vmid)
+	vm, _, err := conn.FindVM(ctx, vmid)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to get VM %d: %w", vmid, err)
 	}
 
 	if vm.Template {
 		return fmt.Errorf("cannot stop global template %d", vmid)
 	}
 
-	if !VerifyVMOwner(vm, userUUID) {
+	if !VerifyVMOwner(vm, userUUID, role) {
 		return fmt.Errorf("unauthorized: VM %d does not belong to user", vmid)
 	}
 
@@ -79,20 +79,20 @@ func StopVM(conn types.Conn, userUUID string, vmid int) error {
 	return nil
 }
 
-func DeleteVM(conn types.Conn, userUUID string, vmid int) error {
+func DeleteVM(conn types.Conn, userUUID string, role string, vmid int) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	_, vm, err := FindVMInConn(ctx, conn, vmid)
+	vm, _, err := conn.FindVM(ctx, vmid)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to get VM %d: %w", vmid, err)
 	}
 
 	if vm.Template {
 		return fmt.Errorf("cannot delete global template %d", vmid)
 	}
 
-	if !VerifyVMOwner(vm, userUUID) {
+	if !VerifyVMOwner(vm, userUUID, role) {
 		return fmt.Errorf("unauthorized: VM %d does not belong to user", vmid)
 	}
 

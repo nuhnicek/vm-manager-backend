@@ -1,8 +1,6 @@
 package bootstrap
 
 import (
-	"vm-manager-backend/internal/core/balancer"
-	"vm-manager-backend/internal/core/labs"
 	"vm-manager-backend/types"
 
 	"github.com/gin-gonic/gin"
@@ -24,23 +22,24 @@ func Initialize(router *gin.Engine) (error, types.Config) {
 		return err, config
 	}
 	conn.Redis = redis
-	proxmox, err := ConnectProxmox(config.ProxmoxUsername, config.ProxmoxPassword, config.ProxmoxHostURI)
+
+	uris := config.ProxmoxURIs
+	if len(uris) == 0 && config.ProxmoxHostURI != "" {
+		uris = []string{config.ProxmoxHostURI}
+	}
+
+	pool, err := ConnectProxmoxPool(config.ProxmoxUsername, config.ProxmoxPassword, uris)
 	if err != nil {
 		return err, config
 	}
-	conn.Proxmox = proxmox
-
-	initialNode := types.StandaloneNode{
-		ID:       "pve-primary",
-		HostURI:  config.ProxmoxHostURI,
-		Username: config.ProxmoxUsername,
-		Password: config.ProxmoxPassword,
-		IsActive: true,
-		Weight:   100,
+	conn.Pool = pool
+	if len(pool) > 0 {
+		conn.Proxmox = pool[0].Client
+		conn.ProxmoxNode = pool[0].NodeName
 	}
-	conn.NodePool = balancer.NewPVENodePool(conn.Mongo, initialNode)
-
-	_ = labs.SeedDefaultLabs(conn)
+	if config.ProxmoxNode != "" {
+		conn.ProxmoxNode = config.ProxmoxNode
+	}
 
 	RegisterRouter(router, conn)
 	return nil, config
