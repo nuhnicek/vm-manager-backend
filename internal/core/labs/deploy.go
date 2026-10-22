@@ -57,7 +57,9 @@ func DeployLab(conn types.Conn, templateID string, targetUserUUID string, target
 		var node *proxmox.Node
 		var baseVM *proxmox.VirtualMachine
 
-		if preferredNode != nil {
+		if vmTpl.Node != "" {
+			node, baseVM, err = vms.FindVMNode(ctx, conn.Proxmox, targetTemplateID, vmTpl.Node)
+		} else if preferredNode != nil {
 			if vmObj, err := preferredNode.VirtualMachine(ctx, targetTemplateID); err == nil && vmObj != nil && vmObj.Template {
 				node = preferredNode
 				baseVM = vmObj

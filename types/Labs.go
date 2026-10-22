@@ -5,6 +5,7 @@ import "time"
 type LabVMTemplate struct {
 	Name        string `bson:"name" json:"name"`
 	TemplateID  int    `bson:"template_id" json:"template_id"`
+	Node        string `bson:"node,omitempty" json:"node,omitempty"`
 	Description string `bson:"description" json:"description"`
 	RAM         int    `bson:"ram_mb,omitempty" json:"ram_mb"`
 	DefaultUser string `bson:"default_user,omitempty" json:"default_user"`
