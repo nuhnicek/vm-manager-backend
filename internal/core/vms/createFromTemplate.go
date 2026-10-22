@@ -10,11 +10,11 @@ import (
 	"github.com/luthermonson/go-proxmox"
 )
 
-func CreateFromTemplate(conn types.Conn, ownerUUID string, vmName string, templateID int) (error, string) {
+func CreateFromTemplate(conn types.Conn, ownerUUID string, vmName string, templateID int, targetNodes ...string) (error, string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 
-	templateVM, nodeClient, err := conn.FindTemplate(ctx, templateID)
+	templateVM, nodeClient, err := conn.FindTemplate(ctx, templateID, targetNodes...)
 	if err != nil {
 		return err, ""
 	}
