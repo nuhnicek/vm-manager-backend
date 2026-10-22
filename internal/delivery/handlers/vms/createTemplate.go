@@ -9,7 +9,8 @@ import (
 )
 
 type convertVMBody struct {
-	VMID int `json:"vmid" binding:"required"`
+	VMID int    `json:"vmid" binding:"required"`
+	Node string `json:"node,omitempty"`
 }
 
 func ConvertVMToTemplate(conn types.Conn) gin.HandlerFunc {
@@ -29,7 +30,7 @@ func ConvertVMToTemplate(conn types.Conn) gin.HandlerFunc {
 			uuidStr = ""
 		}
 
-		template, err := vms.ConvertVMToTemplate(conn, uuidStr, body.VMID)
+		template, err := vms.ConvertVMToTemplate(conn, uuidStr, body.VMID, body.Node)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return

@@ -14,7 +14,7 @@ func ListTemplates(conn types.Conn) ([]types.Vm, error) {
 
 	pool := conn.GetPool()
 	machines := make([]types.Vm, 0)
-	seen := make(map[uint64]bool)
+	seen := make(map[string]bool)
 
 	for _, nc := range pool {
 		node, err := nc.Client.Node(ctx, nc.NodeName)
@@ -29,10 +29,11 @@ func ListTemplates(conn types.Conn) ([]types.Vm, error) {
 
 		for _, i := range vms {
 			if i.Template {
-				if seen[uint64(i.VMID)] {
+				key := fmt.Sprintf("%s:%d", nc.NodeName, i.VMID)
+				if seen[key] {
 					continue
 				}
-				seen[uint64(i.VMID)] = true
+				seen[key] = true
 
 				var vmUUID string
 				tags := strings.Split(i.Tags, ";")
@@ -62,6 +63,7 @@ func ListTemplates(conn types.Conn) ([]types.Vm, error) {
 					Id:   i.VMID,
 					Name: i.Name,
 					UUID: vmUUID,
+					Node: nc.NodeName,
 				}
 				machines = append(machines, vm)
 			}

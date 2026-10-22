@@ -11,7 +11,7 @@ import (
 	"github.com/luthermonson/go-proxmox"
 )
 
-func ConvertVMToTemplate(conn types.Conn, userUUID string, vmid int) (*types.Vm, error) {
+func ConvertVMToTemplate(conn types.Conn, userUUID string, vmid int, targetNodes ...string) (*types.Vm, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 
@@ -19,10 +19,15 @@ func ConvertVMToTemplate(conn types.Conn, userUUID string, vmid int) (*types.Vm,
 	var vm *proxmox.VirtualMachine
 	var err error
 
+	targetNode := ""
+	if len(targetNodes) > 0 && targetNodes[0] != "" {
+		targetNode = targetNodes[0]
+	}
+
 	if conn.NodePool != nil {
-		_, nodeObj, vm, err = conn.NodePool.FindVM(ctx, vmid)
+		_, nodeObj, vm, err = conn.NodePool.FindVM(ctx, vmid, targetNode)
 	} else {
-		nodeObj, vm, err = FindVMNode(ctx, conn.Proxmox, vmid)
+		nodeObj, vm, err = FindVMNode(ctx, conn.Proxmox, vmid, targetNode)
 	}
 
 	if err != nil || vm == nil {
@@ -95,9 +100,9 @@ func CloneVMAsTemplate(conn types.Conn, userUUID string, req types.CreateTemplat
 	var err error
 
 	if conn.NodePool != nil {
-		_, nodeObj, sourceVM, err = conn.NodePool.FindVM(ctx, req.SourceVMID)
+		_, nodeObj, sourceVM, err = conn.NodePool.FindVM(ctx, req.SourceVMID, req.SourceNode)
 	} else {
-		nodeObj, sourceVM, err = FindVMNode(ctx, conn.Proxmox, req.SourceVMID)
+		nodeObj, sourceVM, err = FindVMNode(ctx, conn.Proxmox, req.SourceVMID, req.SourceNode)
 	}
 
 	if err != nil || sourceVM == nil {

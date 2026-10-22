@@ -10,7 +10,8 @@ import (
 )
 
 type vmActionBody struct {
-	ID int `json:"id"`
+	ID   int    `json:"id"`
+	Node string `json:"node,omitempty"`
 }
 
 func Start(conn types.Conn) gin.HandlerFunc {
@@ -27,7 +28,7 @@ func Start(conn types.Conn) gin.HandlerFunc {
 			return
 		}
 
-		err := vms.StartVM(conn, uuid.(string), role, body.ID)
+		err := vms.StartVM(conn, uuid.(string), role, body.ID, body.Node)
 		if err != nil {
 			fmt.Printf("failed to start VM %d: %v\n", body.ID, err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -52,7 +53,7 @@ func Stop(conn types.Conn) gin.HandlerFunc {
 			return
 		}
 
-		err := vms.StopVM(conn, uuid.(string), role, body.ID)
+		err := vms.StopVM(conn, uuid.(string), role, body.ID, body.Node)
 		if err != nil {
 			fmt.Printf("failed to stop VM %d: %v\n", body.ID, err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -77,7 +78,7 @@ func Delete(conn types.Conn) gin.HandlerFunc {
 			return
 		}
 
-		err := vms.DeleteVM(conn, uuid.(string), role, body.ID)
+		err := vms.DeleteVM(conn, uuid.(string), role, body.ID, body.Node)
 		if err != nil {
 			fmt.Printf("failed to delete VM %d: %v\n", body.ID, err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})

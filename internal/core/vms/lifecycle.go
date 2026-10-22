@@ -25,11 +25,11 @@ func VerifyVMOwner(vm *proxmox.VirtualMachine, userUUID string, roles ...string)
 	return false
 }
 
-func StartVM(conn types.Conn, userUUID string, role string, vmid int) error {
+func StartVM(conn types.Conn, userUUID string, role string, vmid int, targetNodes ...string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	vm, _, err := conn.FindVM(ctx, vmid)
+	vm, _, err := conn.FindVM(ctx, vmid, targetNodes...)
 	if err != nil {
 		return fmt.Errorf("failed to get VM %d: %w", vmid, err)
 	}
@@ -53,11 +53,11 @@ func StartVM(conn types.Conn, userUUID string, role string, vmid int) error {
 	return nil
 }
 
-func StopVM(conn types.Conn, userUUID string, role string, vmid int) error {
+func StopVM(conn types.Conn, userUUID string, role string, vmid int, targetNodes ...string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	vm, _, err := conn.FindVM(ctx, vmid)
+	vm, _, err := conn.FindVM(ctx, vmid, targetNodes...)
 	if err != nil {
 		return fmt.Errorf("failed to get VM %d: %w", vmid, err)
 	}
@@ -81,11 +81,11 @@ func StopVM(conn types.Conn, userUUID string, role string, vmid int) error {
 	return nil
 }
 
-func DeleteVM(conn types.Conn, userUUID string, role string, vmid int) error {
+func DeleteVM(conn types.Conn, userUUID string, role string, vmid int, targetNodes ...string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	vm, _, err := conn.FindVM(ctx, vmid)
+	vm, _, err := conn.FindVM(ctx, vmid, targetNodes...)
 	if err != nil {
 		return fmt.Errorf("failed to get VM %d: %w", vmid, err)
 	}

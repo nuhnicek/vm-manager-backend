@@ -107,13 +107,21 @@ func (c Conn) GetNode(ctx context.Context) (*proxmox.Node, error) {
 	return nil, fmt.Errorf("no Proxmox client configured")
 }
 
-func (c Conn) FindVM(ctx context.Context, vmid int) (*proxmox.VirtualMachine, *ProxmoxNodeClient, error) {
+func (c Conn) FindVM(ctx context.Context, vmid int, targetNodes ...string) (*proxmox.VirtualMachine, *ProxmoxNodeClient, error) {
 	pool := c.GetPool()
 	var foundVM *proxmox.VirtualMachine
 	var foundClient *ProxmoxNodeClient
 
+	targetNode := ""
+	if len(targetNodes) > 0 && targetNodes[0] != "" {
+		targetNode = targetNodes[0]
+	}
+
 	for i := range pool {
 		nc := pool[i]
+		if targetNode != "" && nc.NodeName != targetNode {
+			continue
+		}
 		node, err := nc.Client.Node(ctx, nc.NodeName)
 		if err != nil {
 			continue
@@ -136,10 +144,18 @@ func (c Conn) FindVM(ctx context.Context, vmid int) (*proxmox.VirtualMachine, *P
 	return nil, nil, fmt.Errorf("VM %d not found in pool", vmid)
 }
 
-func (c Conn) FindTemplate(ctx context.Context, templateID int) (*proxmox.VirtualMachine, *ProxmoxNodeClient, error) {
+func (c Conn) FindTemplate(ctx context.Context, templateID int, targetNodes ...string) (*proxmox.VirtualMachine, *ProxmoxNodeClient, error) {
 	pool := c.GetPool()
+	targetNode := ""
+	if len(targetNodes) > 0 && targetNodes[0] != "" {
+		targetNode = targetNodes[0]
+	}
+
 	for i := range pool {
 		nc := pool[i]
+		if targetNode != "" && nc.NodeName != targetNode {
+			continue
+		}
 		node, err := nc.Client.Node(ctx, nc.NodeName)
 		if err != nil {
 			continue

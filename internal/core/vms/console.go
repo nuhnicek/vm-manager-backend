@@ -24,11 +24,11 @@ type ConsoleStream struct {
 	Close func() error
 }
 
-func OpenVMConsole(conn types.Conn, userUUID string, role string, vmid int) (*ConsoleStream, error) {
+func OpenVMConsole(conn types.Conn, userUUID string, role string, vmid int, targetNodes ...string) (*ConsoleStream, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	vm, nodeClient, err := conn.FindVM(ctx, vmid)
+	vm, nodeClient, err := conn.FindVM(ctx, vmid, targetNodes...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get VM %d: %w", vmid, err)
 	}
@@ -200,11 +200,11 @@ func OpenVMConsole(conn types.Conn, userUUID string, role string, vmid int) (*Co
 	}, nil
 }
 
-func OpenVMVNC(conn types.Conn, userUUID string, role string, vmid int) (*ConsoleStream, error) {
+func OpenVMVNC(conn types.Conn, userUUID string, role string, vmid int, targetNodes ...string) (*ConsoleStream, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	vm, _, err := conn.FindVM(ctx, vmid)
+	vm, _, err := conn.FindVM(ctx, vmid, targetNodes...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get VM %d: %w", vmid, err)
 	}

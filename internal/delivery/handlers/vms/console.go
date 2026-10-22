@@ -55,7 +55,8 @@ func ConsoleWS(conn types.Conn) gin.HandlerFunc {
 		}
 		defer ws.Close()
 
-		stream, err := vms.OpenVMConsole(conn, userUUID, role, vmid)
+		node := c.Query("node")
+		stream, err := vms.OpenVMConsole(conn, userUUID, role, vmid, node)
 		if err != nil {
 			errMsg := fmt.Sprintf("\r\n\x1b[31m[Console Error: %v]\x1b[0m\r\n", err)
 			_ = ws.WriteMessage(websocket.TextMessage, []byte(errMsg))
@@ -156,7 +157,8 @@ func VNCWS(conn types.Conn) gin.HandlerFunc {
 		}
 		defer ws.Close()
 
-		stream, err := vms.OpenVMVNC(conn, userUUID, role, vmid)
+		node := c.Query("node")
+		stream, err := vms.OpenVMVNC(conn, userUUID, role, vmid, node)
 		if err != nil {
 			_ = ws.WriteControl(websocket.CloseMessage,
 				websocket.FormatCloseMessage(websocket.CloseNormalClosure, err.Error()),

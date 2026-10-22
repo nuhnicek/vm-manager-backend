@@ -284,11 +284,18 @@ func (p *PVENodePool) GetClientForNode(nodeID string) (*proxmox.Client, *proxmox
 	return nil, nil, fmt.Errorf("node %s not found in pool", nodeID)
 }
 
-func (p *PVENodePool) FindVM(ctx context.Context, vmid int) (*proxmox.Client, *proxmox.Node, *proxmox.VirtualMachine, error) {
+func (p *PVENodePool) FindVM(ctx context.Context, vmid int, targetNodes ...string) (*proxmox.Client, *proxmox.Node, *proxmox.VirtualMachine, error) {
+	targetNode := ""
+	if len(targetNodes) > 0 && targetNodes[0] != "" {
+		targetNode = targetNodes[0]
+	}
+
 	p.mu.RLock()
 	instances := make([]*PVENodeInstance, 0, len(p.nodes))
 	for _, inst := range p.nodes {
-		instances = append(instances, inst)
+		if targetNode == "" || inst.NodeName == targetNode {
+			instances = append(instances, inst)
+		}
 	}
 	p.mu.RUnlock()
 
@@ -311,10 +318,7 @@ func (p *PVENodePool) FindVM(ctx context.Context, vmid int) (*proxmox.Client, *p
 			}
 			vm, err := nodeObj.VirtualMachine(ctx, vmid)
 			if err == nil && vm != nil {
-				select {
-				case resultCh <- vmResult{client: instance.Client, node: nodeObj, vm: vm}:
-				default:
-				}
+				resultCh <- vmResult{client: instance.Client, node: nodeObj, vm: vm}
 			}
 		}(inst)
 	}
@@ -322,8 +326,19 @@ func (p *PVENodePool) FindVM(ctx context.Context, vmid int) (*proxmox.Client, *p
 	wg.Wait()
 	close(resultCh)
 
-	if res, ok := <-resultCh; ok {
-		return res.client, res.node, res.vm, nil
+	var fallbackRes *vmResult
+	for res := range resultCh {
+		if !res.vm.Template {
+			return res.client, res.node, res.vm, nil
+		}
+		if fallbackRes == nil {
+			item := res
+			fallbackRes = &item
+		}
+	}
+
+	if fallbackRes != nil {
+		return fallbackRes.client, fallbackRes.node, fallbackRes.vm, nil
 	}
 
 	return nil, nil, nil, fmt.Errorf("VM %d not found on any standalone Proxmox node", vmid)

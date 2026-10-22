@@ -53,9 +53,25 @@ func GetClusterNodes(ctx context.Context, client *proxmox.Client) ([]*proxmox.No
 	return activeNodes, nil
 }
 
-func FindVMNode(ctx context.Context, client *proxmox.Client, vmid int) (*proxmox.Node, *proxmox.VirtualMachine, error) {
+func FindVMNode(ctx context.Context, client *proxmox.Client, vmid int, targetNodes ...string) (*proxmox.Node, *proxmox.VirtualMachine, error) {
 	if client == nil {
 		return nil, nil, fmt.Errorf("proxmox client is nil")
+	}
+
+	targetNode := ""
+	if len(targetNodes) > 0 && targetNodes[0] != "" {
+		targetNode = targetNodes[0]
+	}
+
+	if targetNode != "" {
+		node, err := client.Node(ctx, targetNode)
+		if err == nil && node != nil {
+			vm, err := node.VirtualMachine(ctx, vmid)
+			if err == nil && vm != nil {
+				return node, vm, nil
+			}
+		}
+		return nil, nil, fmt.Errorf("VM %d not found on node %s", vmid, targetNode)
 	}
 
 	cCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
@@ -91,13 +107,13 @@ func FindVMNode(ctx context.Context, client *proxmox.Client, vmid int) (*proxmox
 	return nil, nil, fmt.Errorf("VM %d not found on any active node in Proxmox cluster", vmid)
 }
 
-func FindVMInConn(ctx context.Context, conn types.Conn, vmid int) (*proxmox.Node, *proxmox.VirtualMachine, error) {
+func FindVMInConn(ctx context.Context, conn types.Conn, vmid int, targetNodes ...string) (*proxmox.Node, *proxmox.VirtualMachine, error) {
 	if conn.NodePool != nil {
-		_, node, vm, err := conn.NodePool.FindVM(ctx, vmid)
+		_, node, vm, err := conn.NodePool.FindVM(ctx, vmid, targetNodes...)
 		if err == nil && vm != nil {
 			return node, vm, nil
 		}
 	}
-	return FindVMNode(ctx, conn.Proxmox, vmid)
+	return FindVMNode(ctx, conn.Proxmox, vmid, targetNodes...)
 }
 

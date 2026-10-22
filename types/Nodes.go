@@ -46,6 +46,7 @@ type NodePlacementRequest struct {
 
 type CreateTemplateRequest struct {
 	SourceVMID   int    `json:"source_vmid"`
+	SourceNode   string `json:"source_node,omitempty"`
 	TemplateName string `json:"template_name"`
 	CloneFirst   bool   `json:"clone_first"`
 	TargetNodeID string `json:"target_node_id,omitempty"`
@@ -57,7 +58,7 @@ type NodePoolInterface interface {
 	GetTelemetry(ctx context.Context) []NodeTelemetry
 	SelectNode(ctx context.Context, req NodePlacementRequest) (*proxmox.Client, *proxmox.Node, string, error)
 	GetClientForNode(nodeID string) (*proxmox.Client, *proxmox.Node, error)
-	FindVM(ctx context.Context, vmid int) (*proxmox.Client, *proxmox.Node, *proxmox.VirtualMachine, error)
+	FindVM(ctx context.Context, vmid int, targetNodes ...string) (*proxmox.Client, *proxmox.Node, *proxmox.VirtualMachine, error)
 	AllocateVMID(ctx context.Context) (int, error)
 	ListAllTemplates(ctx context.Context) ([]Vm, error)
 	GetNodes(ctx context.Context) []*proxmox.Node
