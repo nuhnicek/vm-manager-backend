@@ -30,6 +30,11 @@ func ConsoleWS(conn types.Conn) gin.HandlerFunc {
 			return
 		}
 		userUUID := uuidVal.(string)
+		roleVal, _ := c.Get("role")
+		role := "student"
+		if r, ok := roleVal.(string); ok && r != "" {
+			role = r
+		}
 
 		vmidStr := c.Query("vmid")
 		if vmidStr == "" {
@@ -50,7 +55,7 @@ func ConsoleWS(conn types.Conn) gin.HandlerFunc {
 		}
 		defer ws.Close()
 
-		stream, err := vms.OpenVMConsole(conn, userUUID, vmid)
+		stream, err := vms.OpenVMConsole(conn, userUUID, role, vmid)
 		if err != nil {
 			errMsg := fmt.Sprintf("\r\n\x1b[31m[Console Error: %v]\x1b[0m\r\n", err)
 			_ = ws.WriteMessage(websocket.TextMessage, []byte(errMsg))
@@ -118,6 +123,11 @@ func VNCWS(conn types.Conn) gin.HandlerFunc {
 			return
 		}
 		userUUID := uuidVal.(string)
+		roleVal, _ := c.Get("role")
+		role := "student"
+		if r, ok := roleVal.(string); ok && r != "" {
+			role = r
+		}
 
 		vmidStr := c.Query("vmid")
 		if vmidStr == "" {
@@ -146,7 +156,7 @@ func VNCWS(conn types.Conn) gin.HandlerFunc {
 		}
 		defer ws.Close()
 
-		stream, err := vms.OpenVMVNC(conn, userUUID, vmid)
+		stream, err := vms.OpenVMVNC(conn, userUUID, role, vmid)
 		if err != nil {
 			_ = ws.WriteControl(websocket.CloseMessage,
 				websocket.FormatCloseMessage(websocket.CloseNormalClosure, err.Error()),

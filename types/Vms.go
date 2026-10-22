@@ -14,7 +14,19 @@ type Vm struct {
 	Name          string                 `json:"name"`
 	Status        string                 `json:"status"`
 	RAM           int                    `json:"ram_mb"`
+	Node          string                 `json:"node,omitempty"`
+	Owner         string                 `json:"owner,omitempty"`
 	Networks      []string               `json:"networks"`
 	AvailableNICs []string               `json:"available_nics"`
 	Connections   []VMConnection         `json:"connections"`
+}
+
+type ProxmoxNodeInfo struct {
+	Name       string `json:"name"`
+	HostURI    string `json:"host_uri"`
+	Status     string `json:"status"`
+	Version    string `json:"version,omitempty"`
+	TotalVMs   int    `json:"total_vms"`
+	RunningVMs int    `json:"running_vms"`
+	Templates  int    `json:"templates"`
 }

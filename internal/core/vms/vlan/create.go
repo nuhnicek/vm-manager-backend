@@ -28,17 +28,12 @@ func ConnectVLAN(vm1id string, nic1 string, vm2id string, nic2 string, conn type
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	node, err := conn.Proxmox.Node(ctx, "pve")
-	if err != nil {
-		return fmt.Errorf("failed to get proxmox node: %w", err)
-	}
-
-	vm1, err := node.VirtualMachine(ctx, id1)
+	vm1, _, err := conn.FindVM(ctx, id1)
 	if err != nil {
 		return fmt.Errorf("failed to get vm1: %w", err)
 	}
 
-	vm2, err := node.VirtualMachine(ctx, id2)
+	vm2, _, err := conn.FindVM(ctx, id2)
 	if err != nil {
 		return fmt.Errorf("failed to get vm2: %w", err)
 	}

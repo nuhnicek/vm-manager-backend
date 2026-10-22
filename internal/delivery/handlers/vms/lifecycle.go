@@ -16,13 +16,18 @@ type vmActionBody struct {
 func Start(conn types.Conn) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		uuid, _ := c.Get("uuid")
+		roleVal, _ := c.Get("role")
+		role := "student"
+		if r, ok := roleVal.(string); ok && r != "" {
+			role = r
+		}
 		var body vmActionBody
 		if err := c.ShouldBindJSON(&body); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
 			return
 		}
 
-		err := vms.StartVM(conn, uuid.(string), body.ID)
+		err := vms.StartVM(conn, uuid.(string), role, body.ID)
 		if err != nil {
 			fmt.Printf("failed to start VM %d: %v\n", body.ID, err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -36,13 +41,18 @@ func Start(conn types.Conn) gin.HandlerFunc {
 func Stop(conn types.Conn) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		uuid, _ := c.Get("uuid")
+		roleVal, _ := c.Get("role")
+		role := "student"
+		if r, ok := roleVal.(string); ok && r != "" {
+			role = r
+		}
 		var body vmActionBody
 		if err := c.ShouldBindJSON(&body); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
 			return
 		}
 
-		err := vms.StopVM(conn, uuid.(string), body.ID)
+		err := vms.StopVM(conn, uuid.(string), role, body.ID)
 		if err != nil {
 			fmt.Printf("failed to stop VM %d: %v\n", body.ID, err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -56,13 +66,18 @@ func Stop(conn types.Conn) gin.HandlerFunc {
 func Delete(conn types.Conn) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		uuid, _ := c.Get("uuid")
+		roleVal, _ := c.Get("role")
+		role := "student"
+		if r, ok := roleVal.(string); ok && r != "" {
+			role = r
+		}
 		var body vmActionBody
 		if err := c.ShouldBindJSON(&body); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
 			return
 		}
 
-		err := vms.DeleteVM(conn, uuid.(string), body.ID)
+		err := vms.DeleteVM(conn, uuid.(string), role, body.ID)
 		if err != nil {
 			fmt.Printf("failed to delete VM %d: %v\n", body.ID, err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})

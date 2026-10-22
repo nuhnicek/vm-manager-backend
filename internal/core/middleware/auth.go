@@ -18,12 +18,13 @@ func Auth(conn types.Conn) gin.HandlerFunc {
 			c.AbortWithStatus(http.StatusUnauthorized)
 			return
 		}
-		err, uuid := auth.Session(session, conn)
+		err, uuid, role := auth.Session(session, conn)
 		if err != nil {
 			c.AbortWithStatus(http.StatusUnauthorized)
 			return
 		}
 		c.Set("uuid", uuid)
+		c.Set("role", role)
 		c.Next()
 	}
 }

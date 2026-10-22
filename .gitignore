@@ -1,5 +1,5 @@
-# Binaries and compiled outputs
-main
+/main
+/server
 *.exe
 *.exe~
 *.dll
@@ -7,11 +7,9 @@ main
 *.dylib
 bin/
 
-# Environment variables and local secrets
 .env
 *.env.local
 
-# IDE, Editor, and OS metadata
 .idea/
 .vscode/
 *.swp
@@ -19,6 +17,5 @@ bin/
 .DS_Store
 Thumbs.db
 
-# Test coverage and profiles
 *.out
 *.test

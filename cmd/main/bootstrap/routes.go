@@ -2,19 +2,41 @@ package bootstrap
 
 import (
 	"vm-manager-backend/internal/core/middleware"
+	"vm-manager-backend/internal/delivery/handlers"
 	"vm-manager-backend/internal/delivery/handlers/auth"
 	"vm-manager-backend/internal/delivery/handlers/vms"
 	"vm-manager-backend/internal/delivery/handlers/vms/network"
 	"vm-manager-backend/types"
 
-	"vm-manager-backend/internal/delivery/handlers"
-
 	"github.com/gin-gonic/gin"
 )
 
+func CORSMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
+		c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
+		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, accept, origin, Cache-Control, X-Requested-With")
+		c.Writer.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS, GET, PUT, DELETE, PATCH")
+
+		if c.Request.Method == "OPTIONS" {
+			c.AbortWithStatus(204)
+			return
+		}
+
+		c.Next()
+	}
+}
+
 func RegisterRouter(router *gin.Engine, conn types.Conn) {
+	router.Use(CORSMiddleware())
 	router.GET("/ping", middleware.Auth(conn), handlers.Main(conn))
 	router.POST("/auth/login", auth.Login(conn))
+	router.GET("/nodes", middleware.Auth(conn), vms.ListNodes(conn))
+	router.GET("/teacher/nodes", middleware.Auth(conn), vms.ListNodes(conn))
+	router.POST("/teacher/nodes/refresh", middleware.Auth(conn), vms.RefreshNodes(conn))
+	router.GET("/teacher/students", middleware.Auth(conn), vms.TeacherStudents(conn))
+	router.GET("/labs/templates", middleware.Auth(conn), vms.ListTemplates(conn))
+	router.GET("/labs/instances", middleware.Auth(conn), vms.List(conn))
 	router.GET("/vms", middleware.Auth(conn), vms.List(conn))
 	router.GET("/vms/templates", middleware.Auth(conn), vms.ListTemplates(conn))
 	router.POST("/vms/create", middleware.Auth(conn), vms.CreateFromTemplate(conn))

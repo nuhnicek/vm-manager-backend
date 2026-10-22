@@ -9,53 +9,62 @@ import (
 )
 
 func ListTemplates(conn types.Conn) ([]types.Vm, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	node, err := conn.Proxmox.Node(ctx, "pve")
-	if err != nil {
-		return nil, err
-	}
-
-	vms, err := node.VirtualMachines(ctx)
-	if err != nil {
-		return nil, err
-	}
-
+	pool := conn.GetPool()
 	machines := make([]types.Vm, 0)
-	for _, i := range vms {
-		if i.Template {
-			var vmUUID string
+	seen := make(map[uint64]bool)
 
-			tags := strings.Split(i.Tags, ";")
-			for _, tag := range tags {
-				trimmed := strings.TrimSpace(tag)
-				if strings.HasPrefix(trimmed, "vm-") {
-					vmUUID = strings.TrimPrefix(trimmed, "vm-")
-					break
+	for _, nc := range pool {
+		node, err := nc.Client.Node(ctx, nc.NodeName)
+		if err != nil {
+			continue
+		}
+
+		vms, err := node.VirtualMachines(ctx)
+		if err != nil {
+			continue
+		}
+
+		for _, i := range vms {
+			if i.Template {
+				if seen[uint64(i.VMID)] {
+					continue
 				}
-			}
+				seen[uint64(i.VMID)] = true
 
-			if vmUUID == "" {
+				var vmUUID string
+				tags := strings.Split(i.Tags, ";")
 				for _, tag := range tags {
 					trimmed := strings.TrimSpace(tag)
-					if len(trimmed) == 36 && strings.Count(trimmed, "-") == 4 {
-						vmUUID = trimmed
+					if strings.HasPrefix(trimmed, "vm-") {
+						vmUUID = strings.TrimPrefix(trimmed, "vm-")
 						break
 					}
 				}
-			}
 
-			if vmUUID == "" {
-				vmUUID = fmt.Sprintf("tpl-%d", i.VMID)
-			}
+				if vmUUID == "" {
+					for _, tag := range tags {
+						trimmed := strings.TrimSpace(tag)
+						if len(trimmed) == 36 && strings.Count(trimmed, "-") == 4 {
+							vmUUID = trimmed
+							break
+						}
+					}
+				}
 
-			vm := types.Vm{
-				Id:   i.VMID,
-				Name: i.Name,
-				UUID: vmUUID,
+				if vmUUID == "" {
+					vmUUID = fmt.Sprintf("tpl-%d", i.VMID)
+				}
+
+				vm := types.Vm{
+					Id:   i.VMID,
+					Name: i.Name,
+					UUID: vmUUID,
+				}
+				machines = append(machines, vm)
 			}
-			machines = append(machines, vm)
 		}
 	}
 
