@@ -109,13 +109,17 @@ func List(conn types.Conn, uuid string, roles ...string) ([]types.Vm, error) {
 					}
 				}
 
+				nodeName := nc.NodeName
+				if role != "teacher" && role != "admin" {
+					nodeName = ""
+				}
 				vm := types.Vm{
 					Id:            i.VMID,
 					Name:          i.Name,
 					UUID:          vmUUID,
 					Status:        status,
 					RAM:           ramMB,
-					Node:          nc.NodeName,
+					Node:          nodeName,
 					Owner:         ownerUUID,
 					Networks:      networks,
 					AvailableNICs: availableNICs,

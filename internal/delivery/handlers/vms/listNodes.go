@@ -10,6 +10,12 @@ import (
 
 func ListNodes(conn types.Conn) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		roleVal, exists := c.Get("role")
+		role, _ := roleVal.(string)
+		if !exists || (role != "teacher" && role != "admin") {
+			c.JSON(http.StatusOK, []types.ProxmoxNodeInfo{})
+			return
+		}
 		nodes := vms.ListNodes(conn)
 		c.JSON(http.StatusOK, nodes)
 	}
