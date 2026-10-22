@@ -28,14 +28,9 @@ func OpenVMConsole(conn types.Conn, userUUID string, vmid int) (*ConsoleStream, 
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	node, err := conn.Proxmox.Node(ctx, "pve")
+	_, vm, err := FindVMInConn(ctx, conn, vmid)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get node: %w", err)
-	}
-
-	vm, err := node.VirtualMachine(ctx, vmid)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get VM %d: %w", vmid, err)
+		return nil, err
 	}
 
 	if vm.Template {
@@ -198,14 +193,9 @@ func OpenVMVNC(conn types.Conn, userUUID string, vmid int) (*ConsoleStream, erro
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	node, err := conn.Proxmox.Node(ctx, "pve")
+	_, vm, err := FindVMInConn(ctx, conn, vmid)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get node: %w", err)
-	}
-
-	vm, err := node.VirtualMachine(ctx, vmid)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get VM %d: %w", vmid, err)
+		return nil, err
 	}
 
 	if vm.Template {

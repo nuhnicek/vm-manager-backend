@@ -11,6 +11,9 @@ import (
 )
 
 func VerifyVMOwner(vm *proxmox.VirtualMachine, userUUID string) bool {
+	if userUUID == "" {
+		return true
+	}
 	tags := strings.Split(vm.Tags, ";")
 	for _, tag := range tags {
 		if strings.TrimSpace(tag) == "owner-"+userUUID {
@@ -24,14 +27,9 @@ func StartVM(conn types.Conn, userUUID string, vmid int) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	node, err := conn.Proxmox.Node(ctx, "pve")
+	_, vm, err := FindVMInConn(ctx, conn, vmid)
 	if err != nil {
-		return fmt.Errorf("failed to get node: %w", err)
-	}
-
-	vm, err := node.VirtualMachine(ctx, vmid)
-	if err != nil {
-		return fmt.Errorf("failed to get VM %d: %w", vmid, err)
+		return err
 	}
 
 	if vm.Template {
@@ -57,14 +55,9 @@ func StopVM(conn types.Conn, userUUID string, vmid int) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	node, err := conn.Proxmox.Node(ctx, "pve")
+	_, vm, err := FindVMInConn(ctx, conn, vmid)
 	if err != nil {
-		return fmt.Errorf("failed to get node: %w", err)
-	}
-
-	vm, err := node.VirtualMachine(ctx, vmid)
-	if err != nil {
-		return fmt.Errorf("failed to get VM %d: %w", vmid, err)
+		return err
 	}
 
 	if vm.Template {
@@ -90,14 +83,9 @@ func DeleteVM(conn types.Conn, userUUID string, vmid int) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	node, err := conn.Proxmox.Node(ctx, "pve")
+	_, vm, err := FindVMInConn(ctx, conn, vmid)
 	if err != nil {
-		return fmt.Errorf("failed to get node: %w", err)
-	}
-
-	vm, err := node.VirtualMachine(ctx, vmid)
-	if err != nil {
-		return fmt.Errorf("failed to get VM %d: %w", vmid, err)
+		return err
 	}
 
 	if vm.Template {

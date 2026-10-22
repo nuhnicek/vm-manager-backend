@@ -30,6 +30,10 @@ func ConsoleWS(conn types.Conn) gin.HandlerFunc {
 			return
 		}
 		userUUID := uuidVal.(string)
+		role, _ := c.Get("role")
+		if role == "teacher" || role == "admin" {
+			userUUID = ""
+		}
 
 		vmidStr := c.Query("vmid")
 		if vmidStr == "" {
@@ -118,6 +122,10 @@ func VNCWS(conn types.Conn) gin.HandlerFunc {
 			return
 		}
 		userUUID := uuidVal.(string)
+		role, _ := c.Get("role")
+		if role == "teacher" || role == "admin" {
+			userUUID = ""
+		}
 
 		vmidStr := c.Query("vmid")
 		if vmidStr == "" {

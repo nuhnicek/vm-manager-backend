@@ -7,7 +7,8 @@ import (
 )
 
 type Conn struct {
-	Mongo   *mongo.Client
-	Redis   *redis.Client
-	Proxmox *proxmox.Client
+	Mongo    *mongo.Client
+	Redis    *redis.Client
+	Proxmox  *proxmox.Client
+	NodePool NodePoolInterface
 }

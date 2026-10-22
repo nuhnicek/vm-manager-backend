@@ -9,6 +9,7 @@ import (
 func main() {
 	router := gin.Default()
 	err, config := bootstrap.Initialize(router)
+
 	if err != nil {
 		panic(err)
 	}

@@ -79,6 +79,18 @@ All `/vms/*` endpoints and `/ping` require the `Authorization` header containing
 | `POST` | `/vms/network/disconnect` | Remove link between two VMs | `{"vmid1": 101, "vmid2": 102}` |
 | `WS` | `/vms/console/vnc` | noVNC RFB binary stream proxy | Query params: `?vmid=101&token=<token>` |
 | `WS` | `/vms/console/ws` | xterm.js serial terminal proxy | Query params: `?vmid=101&token=<token>` |
+| `GET` | `/labs/templates` | List all available lab templates | Returns lab catalog |
+| `POST` | `/labs/templates` | Create lab template (Teacher only) | `{"name": "...", "vms": [...], "networks": [...]}` |
+| `DELETE` | `/labs/templates/:id` | Delete lab template (Teacher only) | Template ID in path |
+| `POST` | `/labs/deploy` | Deploy multi-VM lab topology with VLANs | `{"template_id": "...", "student_uuid": "..."}` |
+| `GET` | `/labs/instances` | List active deployed lab instances | Returns user or student lab environments |
+| `POST` | `/labs/instances/:id/start` | Power on all VMs in lab instance | Lab instance ID in path |
+| `POST` | `/labs/instances/:id/stop` | Power off all VMs in lab instance | Lab instance ID in path |
+| `DELETE` | `/labs/instances/:id` | Tear down lab instance and destroy VMs | Lab instance ID in path |
+| `GET` | `/teacher/students` | List student accounts and VM counts | Teacher role required |
+| `POST` | `/teacher/students` | Create student account | `{"email": "...", "password": "..."}` |
+| `GET` | `/teacher/vms` | List all VMs across all students | Teacher role required |
+| `POST` | `/teacher/vms/bulk-action` | Classroom bulk action (e.g. stop all) | `{"action": "stop_all"}` |
 
 ---
 

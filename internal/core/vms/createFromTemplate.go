@@ -15,25 +15,41 @@ func CreateFromTemplate(conn types.Conn, ownerUUID string, vmName string, templa
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 
-	node, err := conn.Proxmox.Node(ctx, "pve")
-	if err != nil {
-		return err, ""
+	var node *proxmox.Node
+	var templateVM *proxmox.VirtualMachine
+	var err error
+
+	if conn.NodePool != nil {
+		_, node, _, err = conn.NodePool.SelectNode(ctx, types.NodePlacementRequest{
+			RequiredRAMMB:      2048,
+			RequiredTemplateID: templateID,
+		})
+		if err == nil && node != nil {
+			templateVM, _ = node.VirtualMachine(ctx, templateID)
+		}
 	}
 
-	templateVM, err := node.VirtualMachine(ctx, templateID)
-	if err != nil {
-		return err, ""
+	if templateVM == nil {
+		node, templateVM, err = FindVMNode(ctx, conn.Proxmox, templateID)
+		if err != nil {
+			return fmt.Errorf("failed to locate template VM %d: %w", templateID, err), ""
+		}
 	}
 	if !templateVM.Template {
 		return fmt.Errorf("VM %d is not a template", templateID), ""
 	}
-	cluster, err := conn.Proxmox.Cluster(ctx)
-	if err != nil {
-		return err, ""
+
+	var vmId int
+	if conn.NodePool != nil {
+		vmId, err = conn.NodePool.AllocateVMID(ctx)
+	} else {
+		cluster, cErr := conn.Proxmox.Cluster(ctx)
+		if cErr == nil && cluster != nil {
+			vmId, err = cluster.NextID(ctx)
+		}
 	}
-	vmId, err := cluster.NextID(ctx)
-	if err != nil {
-		return err, ""
+	if err != nil || vmId <= 0 {
+		return fmt.Errorf("failed to allocate global VMID: %w", err), ""
 	}
 	vmUuid := uuid.New().String()
 	options := &proxmox.VirtualMachineCloneOptions{
@@ -62,6 +78,14 @@ func CreateFromTemplate(conn types.Conn, ownerUUID string, vmName string, templa
 		proxmox.VirtualMachineOption{
 			Name:  "serial0",
 			Value: "socket",
+		},
+		proxmox.VirtualMachineOption{
+			Name:  "ciuser",
+			Value: "ubuntu",
+		},
+		proxmox.VirtualMachineOption{
+			Name:  "cipassword",
+			Value: "ubuntu",
 		},
 	)
 

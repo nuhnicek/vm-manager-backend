@@ -7,6 +7,9 @@ import (
 	"strings"
 	"time"
 	"vm-manager-backend/types"
+
+	"github.com/luthermonson/go-proxmox"
+	"go.mongodb.org/mongo-driver/v2/bson"
 )
 
 type vmNetEndpoint struct {
@@ -30,14 +33,29 @@ func List(conn types.Conn, uuid string) ([]types.Vm, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	node, err := conn.Proxmox.Node(ctx, "pve")
-	if err != nil {
-		return nil, err
+	var nodes []*proxmox.Node
+	var err error
+	if conn.NodePool != nil {
+		nodes = conn.NodePool.GetNodes(ctx)
+	}
+	if len(nodes) == 0 {
+		nodes, err = GetClusterNodes(ctx, conn.Proxmox)
+		if err != nil {
+			return nil, err
+		}
 	}
 
-	vms, err := node.VirtualMachines(ctx)
-	if err != nil {
-		return nil, err
+	userEmailMap := make(map[string]string)
+	if coll := conn.Mongo.Database("lab411").Collection("users"); coll != nil {
+		cursor, err := coll.Find(ctx, bson.M{})
+		if err == nil {
+			var users []types.UserDocument
+			if err := cursor.All(ctx, &users); err == nil {
+				for _, u := range users {
+					userEmailMap[u.UUID] = u.Email
+				}
+			}
+		}
 	}
 
 	type rawVMData struct {
@@ -48,22 +66,31 @@ func List(conn types.Conn, uuid string) ([]types.Vm, error) {
 	var rawList []rawVMData
 	tagMap := make(map[int][]vmNetEndpoint)
 
-	for _, i := range vms {
-		if i.Template {
+	for _, node := range nodes {
+		vms, err := node.VirtualMachines(ctx)
+		if err != nil {
 			continue
 		}
-		var ownerUUID, vmUUID string
+
+		for _, i := range vms {
+			if bool(i.Template) {
+				continue
+			}
+		var ownerUUID, vmUUID, labID string
 
 		tags := strings.Split(i.Tags, ";")
 		for _, tag := range tags {
-			if strings.HasPrefix(tag, "owner-") {
-				ownerUUID = strings.TrimPrefix(tag, "owner-")
-			} else if strings.HasPrefix(tag, "vm-") {
-				vmUUID = strings.TrimPrefix(tag, "vm-")
+			trimmed := strings.TrimSpace(tag)
+			if strings.HasPrefix(trimmed, "owner-") {
+				ownerUUID = strings.TrimPrefix(trimmed, "owner-")
+			} else if strings.HasPrefix(trimmed, "vm-") {
+				vmUUID = strings.TrimPrefix(trimmed, "vm-")
+			} else if strings.HasPrefix(trimmed, "lab-") {
+				labID = strings.TrimPrefix(trimmed, "lab-")
 			}
 		}
 
-		if ownerUUID == uuid {
+		if uuid == "" || ownerUUID == uuid {
 			networks := make([]string, 0)
 			availableNICs := make([]string, 0)
 			nicTags := make(map[string]int)
@@ -101,10 +128,16 @@ func List(conn types.Conn, uuid string) ([]types.Vm, error) {
 				}
 			}
 
+			ownerEmail := userEmailMap[ownerUUID]
+
 			vm := types.Vm{
 				Id:            i.VMID,
 				Name:          i.Name,
 				UUID:          vmUUID,
+				OwnerUUID:     ownerUUID,
+				OwnerEmail:    ownerEmail,
+				LabID:         labID,
+				Node:          node.Name,
 				Status:        status,
 				RAM:           ramMB,
 				Networks:      networks,
@@ -117,6 +150,7 @@ func List(conn types.Conn, uuid string) ([]types.Vm, error) {
 				nicTags: nicTags,
 			})
 		}
+	}
 	}
 
 	var machines []types.Vm

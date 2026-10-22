@@ -11,6 +11,11 @@ type VMConnection struct {
 type Vm struct {
 	Id            proxmox.StringOrUint64 `json:"id"`
 	UUID          string                 `json:"uuid"`
+	OwnerUUID     string                 `json:"owner_uuid,omitempty"`
+	OwnerEmail    string                 `json:"owner_email,omitempty"`
+	LabID         string                 `json:"lab_id,omitempty"`
+	LabName       string                 `json:"lab_name,omitempty"`
+	Node          string                 `json:"node,omitempty"`
 	Name          string                 `json:"name"`
 	Status        string                 `json:"status"`
 	RAM           int                    `json:"ram_mb"`

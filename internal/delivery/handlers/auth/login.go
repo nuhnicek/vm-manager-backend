@@ -19,18 +19,20 @@ func Login(conn types.Conn) gin.HandlerFunc {
 		var body LoginRequest
 		err := c.ShouldBindBodyWithJSON(&body)
 		if err != nil {
-
 			fmt.Println(err)
 			c.Status(http.StatusBadRequest)
 			return
 		}
-		err, session := auth.Login(body.Email, body.Password, conn)
+		err, session, user := auth.Login(body.Email, body.Password, conn)
 		if err != nil {
 			c.Status(http.StatusInternalServerError)
 			return
 		}
-		c.JSON(200, gin.H{
+		c.JSON(http.StatusOK, gin.H{
 			"token": session,
+			"uuid":  user.UUID,
+			"email": user.Email,
+			"role":  user.Role,
 		})
 	}
 }
