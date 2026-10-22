@@ -11,7 +11,7 @@ import (
 	"github.com/luthermonson/go-proxmox"
 )
 
-func ConvertVMToTemplate(conn types.Conn, userUUID string, vmid int, targetNodes ...string) (*types.Vm, error) {
+func ConvertVMToTemplate(conn types.Conn, userUUID string, role string, vmid int, targetNodes ...string) (*types.Vm, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 
@@ -38,7 +38,7 @@ func ConvertVMToTemplate(conn types.Conn, userUUID string, vmid int, targetNodes
 		return nil, fmt.Errorf("VM %d is already a template", vmid)
 	}
 
-	if !VerifyVMOwner(vm, userUUID) {
+	if !VerifyVMOwner(vm, userUUID, role) {
 		return nil, fmt.Errorf("unauthorized: VM %d does not belong to user", vmid)
 	}
 
@@ -84,7 +84,7 @@ func ConvertVMToTemplate(conn types.Conn, userUUID string, vmid int, targetNodes
 	}, nil
 }
 
-func CloneVMAsTemplate(conn types.Conn, userUUID string, req types.CreateTemplateRequest) (*types.Vm, error) {
+func CloneVMAsTemplate(conn types.Conn, userUUID string, role string, req types.CreateTemplateRequest) (*types.Vm, error) {
 	if req.SourceVMID <= 0 {
 		return nil, fmt.Errorf("source VMID is required")
 	}
@@ -109,7 +109,7 @@ func CloneVMAsTemplate(conn types.Conn, userUUID string, req types.CreateTemplat
 		return nil, fmt.Errorf("source VM %d not found: %w", req.SourceVMID, err)
 	}
 
-	if !VerifyVMOwner(sourceVM, userUUID) {
+	if !VerifyVMOwner(sourceVM, userUUID, role) {
 		return nil, fmt.Errorf("unauthorized: source VM %d does not belong to user", req.SourceVMID)
 	}
 

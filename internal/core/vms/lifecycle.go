@@ -16,6 +16,9 @@ func VerifyVMOwner(vm *proxmox.VirtualMachine, userUUID string, roles ...string)
 			return true
 		}
 	}
+	if userUUID == "" {
+		return true
+	}
 	tags := strings.Split(vm.Tags, ";")
 	for _, tag := range tags {
 		if strings.TrimSpace(tag) == "owner-"+userUUID {

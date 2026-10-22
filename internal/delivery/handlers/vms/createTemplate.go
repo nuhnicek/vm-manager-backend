@@ -26,11 +26,11 @@ func ConvertVMToTemplate(conn types.Conn) gin.HandlerFunc {
 
 		userRole, _ := c.Get("role")
 		roleStr, _ := userRole.(string)
-		if roleStr == "teacher" {
+		if roleStr == "teacher" || roleStr == "admin" {
 			uuidStr = ""
 		}
 
-		template, err := vms.ConvertVMToTemplate(conn, uuidStr, body.VMID, body.Node)
+		template, err := vms.ConvertVMToTemplate(conn, uuidStr, roleStr, body.VMID, body.Node)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
@@ -56,11 +56,11 @@ func CloneVMAsTemplate(conn types.Conn) gin.HandlerFunc {
 
 		userRole, _ := c.Get("role")
 		roleStr, _ := userRole.(string)
-		if roleStr == "teacher" {
+		if roleStr == "teacher" || roleStr == "admin" {
 			uuidStr = ""
 		}
 
-		template, err := vms.CloneVMAsTemplate(conn, uuidStr, req)
+		template, err := vms.CloneVMAsTemplate(conn, uuidStr, roleStr, req)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return

@@ -65,8 +65,8 @@ func RegisterRouter(router *gin.Engine, conn types.Conn) {
 	router.GET("/teacher/vms", middleware.Auth(conn), middleware.RequireTeacher(conn), teacher.ListAllVMs(conn))
 	router.POST("/teacher/vms/bulk-action", middleware.Auth(conn), middleware.RequireTeacher(conn), teacher.BulkAction(conn))
 
-	router.POST("/vms/templates/convert", middleware.Auth(conn), vms.ConvertVMToTemplate(conn))
-	router.POST("/vms/templates/clone-as-template", middleware.Auth(conn), vms.CloneVMAsTemplate(conn))
+	router.POST("/vms/templates/convert", middleware.Auth(conn), middleware.RequireTeacher(conn), vms.ConvertVMToTemplate(conn))
+	router.POST("/vms/templates/clone-as-template", middleware.Auth(conn), middleware.RequireTeacher(conn), vms.CloneVMAsTemplate(conn))
 
 	router.GET("/teacher/nodes", middleware.Auth(conn), middleware.RequireTeacher(conn), teacher.ListNodes(conn))
 	router.POST("/teacher/nodes", middleware.Auth(conn), middleware.RequireTeacher(conn), teacher.RegisterNode(conn))
