@@ -101,3 +101,39 @@ func CreateStudent(conn types.Conn, email string, password string, role string) 
 		Role:  newUser.Role,
 	}, nil
 }
+
+func DeleteStudent(conn types.Conn, studentUUID string) error {
+	if studentUUID == "" {
+		return fmt.Errorf("student uuid cannot be empty")
+	}
+
+	coll := conn.Mongo.Database("lab411").Collection("users")
+	res, err := coll.DeleteOne(context.TODO(), bson.M{"uuid": studentUUID})
+	if err != nil {
+		return fmt.Errorf("failed to delete student: %w", err)
+	}
+	if res.DeletedCount == 0 {
+		return fmt.Errorf("student not found")
+	}
+	return nil
+}
+
+func ResetStudentPassword(conn types.Conn, studentUUID string, newPassword string) error {
+	if studentUUID == "" || newPassword == "" {
+		return fmt.Errorf("student uuid and new password cannot be empty")
+	}
+
+	coll := conn.Mongo.Database("lab411").Collection("users")
+	res, err := coll.UpdateOne(
+		context.TODO(),
+		bson.M{"uuid": studentUUID},
+		bson.M{"$set": bson.M{"password": pkg.SHA256(newPassword)}},
+	)
+	if err != nil {
+		return fmt.Errorf("failed to reset student password: %w", err)
+	}
+	if res.MatchedCount == 0 {
+		return fmt.Errorf("student not found")
+	}
+	return nil
+}

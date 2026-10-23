@@ -62,6 +62,8 @@ func RegisterRouter(router *gin.Engine, conn types.Conn) {
 
 	router.GET("/teacher/students", middleware.Auth(conn), middleware.RequireTeacher(conn), teacher.ListStudents(conn))
 	router.POST("/teacher/students", middleware.Auth(conn), middleware.RequireTeacher(conn), teacher.CreateStudent(conn))
+	router.DELETE("/teacher/students/:id", middleware.Auth(conn), middleware.RequireTeacher(conn), teacher.DeleteStudent(conn))
+	router.POST("/teacher/students/:id/reset-password", middleware.Auth(conn), middleware.RequireTeacher(conn), teacher.ResetStudentPassword(conn))
 	router.GET("/teacher/vms", middleware.Auth(conn), middleware.RequireTeacher(conn), teacher.ListAllVMs(conn))
 	router.POST("/teacher/vms/bulk-action", middleware.Auth(conn), middleware.RequireTeacher(conn), teacher.BulkAction(conn))
 

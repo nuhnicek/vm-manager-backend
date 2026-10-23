@@ -76,3 +76,49 @@ func BulkAction(conn types.Conn) gin.HandlerFunc {
 		c.JSON(http.StatusOK, gin.H{"status": "completed", "action": body.Action})
 	}
 }
+
+type resetPasswordBody struct {
+	Password string `json:"password"`
+}
+
+func DeleteStudent(conn types.Conn) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		uuid := c.Param("id")
+		if uuid == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "student uuid is required"})
+			return
+		}
+
+		err := teacher.DeleteStudent(conn, uuid)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{"status": "deleted", "uuid": uuid})
+	}
+}
+
+func ResetStudentPassword(conn types.Conn) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		uuid := c.Param("id")
+		if uuid == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "student uuid is required"})
+			return
+		}
+
+		var body resetPasswordBody
+		if err := c.ShouldBindJSON(&body); err != nil || body.Password == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "new password is required"})
+			return
+		}
+
+		err := teacher.ResetStudentPassword(conn, uuid, body.Password)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{"status": "password_reset", "uuid": uuid})
+	}
+}
