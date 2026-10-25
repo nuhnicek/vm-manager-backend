@@ -490,6 +490,218 @@ func OpenVMVNC(conn types.Conn, userUUID string, role string, vmid int, targetNo
 	}, nil
 }
 
+func StreamVMVNC(conn types.Conn, userUUID string, role string, vmid int, clientWS *websocket.Conn, targetNodes ...string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	vm, _, err := conn.FindVM(ctx, vmid, targetNodes...)
+	if err != nil {
+		return fmt.Errorf("failed to get VM %d: %w", vmid, err)
+	}
+
+	if vm.Template {
+		return fmt.Errorf("cannot open console on template %d", vmid)
+	}
+
+	if !VerifyVMOwner(vm, userUUID, role) {
+		return fmt.Errorf("unauthorized: VM %d does not belong to user", vmid)
+	}
+
+	if !strings.EqualFold(vm.Status, "running") {
+		return fmt.Errorf("VM %d is stopped (please start it first)", vmid)
+	}
+
+	vnc, err := vm.VNCProxy(ctx, &proxmox.VNCConfig{Websocket: true})
+	if err != nil {
+		return fmt.Errorf("failed to initialize VNC proxy: %w", err)
+	}
+
+	pveSend, pveRecv, pveErrs, pveCloser, err := vm.VNCWebSocket(vnc)
+	if err != nil {
+		return fmt.Errorf("failed to open VNC websocket: %w", err)
+	}
+
+	done := make(chan struct{})
+	var closeOnce sync.Once
+	safeClose := func() {
+		closeOnce.Do(func() {
+			close(done)
+			_ = pveCloser()
+		})
+	}
+	defer safeClose()
+
+	var serverVersion []byte
+	select {
+	case <-done:
+		return nil
+	case err, ok := <-pveErrs:
+		if ok && err != nil {
+			return err
+		}
+		return fmt.Errorf("proxmox connection closed prematurely")
+	case serverVersion = <-pveRecv:
+	case <-time.After(10 * time.Second):
+		return fmt.Errorf("timeout waiting for Proxmox RFB version")
+	}
+
+	if err := clientWS.WriteMessage(websocket.BinaryMessage, serverVersion); err != nil {
+		return err
+	}
+
+	_ = clientWS.SetReadDeadline(time.Now().Add(10 * time.Second))
+	_, clientVersion, err := clientWS.ReadMessage()
+	if err != nil {
+		return fmt.Errorf("reading client RFB version: %w", err)
+	}
+
+	select {
+	case <-done:
+		return nil
+	case pveSend <- clientVersion:
+	}
+
+	var pveSecTypes []byte
+	select {
+	case <-done:
+		return nil
+	case err, ok := <-pveErrs:
+		if ok && err != nil {
+			return err
+		}
+		return fmt.Errorf("proxmox connection closed prematurely")
+	case pveSecTypes = <-pveRecv:
+	case <-time.After(10 * time.Second):
+		return fmt.Errorf("timeout waiting for Proxmox security types")
+	}
+
+	requiresVNCAuth := false
+	if len(pveSecTypes) >= 2 {
+		count := int(pveSecTypes[0])
+		for i := 1; i <= count && i < len(pveSecTypes); i++ {
+			if pveSecTypes[i] == 2 {
+				requiresVNCAuth = true
+				break
+			}
+		}
+	}
+
+	if requiresVNCAuth {
+		select {
+		case <-done:
+			return nil
+		case pveSend <- []byte{2}:
+		}
+
+		var challenge []byte
+		select {
+		case <-done:
+			return nil
+		case err, ok := <-pveErrs:
+			if ok && err != nil {
+				return err
+			}
+			return fmt.Errorf("proxmox connection closed prematurely")
+		case challenge = <-pveRecv:
+		case <-time.After(10 * time.Second):
+			return fmt.Errorf("timeout waiting for Proxmox VNC challenge")
+		}
+
+		if len(challenge) != 16 {
+			return fmt.Errorf("invalid VNC challenge length %d", len(challenge))
+		}
+
+		resp := rfbEncrypt(vnc.Ticket, challenge)
+		select {
+		case <-done:
+			return nil
+		case pveSend <- resp:
+		}
+
+		var pveSecResult []byte
+		select {
+		case <-done:
+			return nil
+		case err, ok := <-pveErrs:
+			if ok && err != nil {
+				return err
+			}
+			return fmt.Errorf("proxmox connection closed prematurely")
+		case pveSecResult = <-pveRecv:
+		case <-time.After(10 * time.Second):
+			return fmt.Errorf("timeout waiting for Proxmox security result")
+		}
+
+		if len(pveSecResult) < 4 || pveSecResult[3] != 0 {
+			return fmt.Errorf("Proxmox VNC authentication failed: %v", pveSecResult)
+		}
+
+		if err := clientWS.WriteMessage(websocket.BinaryMessage, []byte{1, 1}); err != nil {
+			return err
+		}
+
+		_ = clientWS.SetReadDeadline(time.Now().Add(10 * time.Second))
+		_, clientChosen, err := clientWS.ReadMessage()
+		if err != nil {
+			return fmt.Errorf("reading client security choice: %w", err)
+		}
+
+		if err := clientWS.WriteMessage(websocket.BinaryMessage, []byte{0, 0, 0, 0}); err != nil {
+			return err
+		}
+
+		if len(clientChosen) > 1 {
+			select {
+			case <-done:
+				return nil
+			case pveSend <- clientChosen[1:]:
+			}
+		}
+	} else {
+		if err := clientWS.WriteMessage(websocket.BinaryMessage, pveSecTypes); err != nil {
+			return err
+		}
+	}
+
+	_ = clientWS.SetReadDeadline(time.Time{})
+
+	go func() {
+		defer safeClose()
+		for {
+			_, p, err := clientWS.ReadMessage()
+			if err != nil {
+				return
+			}
+			if len(p) > 0 {
+				select {
+				case <-done:
+					return
+				case pveSend <- p:
+				}
+			}
+		}
+	}()
+
+	for {
+		select {
+		case <-done:
+			return nil
+		case msg, ok := <-pveRecv:
+			if !ok {
+				return nil
+			}
+			if err := clientWS.WriteMessage(websocket.BinaryMessage, msg); err != nil {
+				return err
+			}
+		case err, ok := <-pveErrs:
+			if ok && err != nil {
+				return err
+			}
+			return nil
+		}
+	}
+}
+
 func rfbEncrypt(password string, challenge []byte) []byte {
 	key := make([]byte, 8)
 	for i := 0; i < len(password) && i < 8; i++ {

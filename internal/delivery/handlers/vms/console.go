@@ -17,8 +17,8 @@ var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool {
 		return true
 	},
-	ReadBufferSize:  4096,
-	WriteBufferSize: 4096,
+	ReadBufferSize:  131072,
+	WriteBufferSize: 131072,
 	Subprotocols:    []string{"binary"},
 }
 
@@ -157,60 +157,14 @@ func VNCWS(conn types.Conn) gin.HandlerFunc {
 		}
 		defer ws.Close()
 
+		ws.EnableWriteCompression(false)
+
 		node := c.Query("node")
-		stream, err := vms.OpenVMVNC(conn, userUUID, role, vmid, node)
-		if err != nil {
+		if err := vms.StreamVMVNC(conn, userUUID, role, vmid, ws, node); err != nil {
 			_ = ws.WriteControl(websocket.CloseMessage,
 				websocket.FormatCloseMessage(websocket.CloseNormalClosure, err.Error()),
 				time.Now().Add(time.Second))
 			return
-		}
-		defer stream.Close()
-
-		done := make(chan struct{})
-		var once sync.Once
-		closeDone := func() {
-			once.Do(func() {
-				close(done)
-			})
-		}
-
-		go func() {
-			defer closeDone()
-			for {
-				select {
-				case <-done:
-					return
-				case msg, ok := <-stream.Recv:
-					if !ok {
-						return
-					}
-					if err := ws.WriteMessage(websocket.BinaryMessage, msg); err != nil {
-						return
-					}
-				case err, ok := <-stream.Errs:
-					if !ok || err == nil {
-						return
-					}
-					return
-				}
-			}
-		}()
-
-		for {
-			_, p, err := ws.ReadMessage()
-			if err != nil {
-				closeDone()
-				break
-			}
-
-			if len(p) > 0 {
-				select {
-				case stream.Send <- p:
-				case <-done:
-					return
-				}
-			}
 		}
 	}
 }
