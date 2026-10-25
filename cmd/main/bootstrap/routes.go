@@ -5,6 +5,7 @@ import (
 	"vm-manager-backend/internal/delivery/handlers"
 	"vm-manager-backend/internal/delivery/handlers/auth"
 	"vm-manager-backend/internal/delivery/handlers/labs"
+	"vm-manager-backend/internal/delivery/handlers/projects"
 	"vm-manager-backend/internal/delivery/handlers/teacher"
 	"vm-manager-backend/internal/delivery/handlers/vms"
 	"vm-manager-backend/internal/delivery/handlers/vms/network"
@@ -47,6 +48,14 @@ func RegisterRouter(router *gin.Engine, conn types.Conn) {
 	router.POST("/vms/network/add-nic", middleware.Auth(conn), network.AddNIC(conn))
 	router.GET("/vms/console/ws", middleware.Auth(conn), vms.ConsoleWS(conn))
 	router.GET("/vms/console/vnc", middleware.Auth(conn), vms.VNCWS(conn))
+	router.POST("/vms/:id/project", middleware.Auth(conn), projects.AssignVM(conn))
+
+	router.GET("/projects", middleware.Auth(conn), projects.List(conn))
+	router.POST("/projects", middleware.Auth(conn), projects.Create(conn))
+	router.PUT("/projects/:id", middleware.Auth(conn), projects.Update(conn))
+	router.DELETE("/projects/:id", middleware.Auth(conn), projects.Delete(conn))
+	router.POST("/projects/:id/vms", middleware.Auth(conn), projects.AddVM(conn))
+	router.DELETE("/projects/:id/vms/:vmid", middleware.Auth(conn), projects.RemoveVM(conn))
 
 	router.GET("/labs/templates", middleware.Auth(conn), labs.ListTemplates(conn))
 	router.GET("/labs/templates/:id", middleware.Auth(conn), labs.GetTemplate(conn))

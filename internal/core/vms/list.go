@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"vm-manager-backend/internal/core/projects"
 	"vm-manager-backend/types"
 )
 
@@ -44,6 +45,8 @@ func List(conn types.Conn, uuid string, roles ...string) ([]types.Vm, error) {
 
 	var rawList []rawVMData
 	tagMap := make(map[int][]vmNetEndpoint)
+
+	projectsMap, _ := projects.GetVMProjectsMap(conn, uuid, role == "teacher" || role == "admin")
 
 	pool := conn.GetPool()
 	for _, nc := range pool {
@@ -113,6 +116,16 @@ func List(conn types.Conn, uuid string, roles ...string) ([]types.Vm, error) {
 				if role != "teacher" && role != "admin" {
 					nodeName = ""
 				}
+
+				projID := ""
+				projName := ""
+				projColor := ""
+				if p, exists := projectsMap[int(i.VMID)]; exists {
+					projID = p.ID
+					projName = p.Name
+					projColor = p.Color
+				}
+
 				vm := types.Vm{
 					Id:            i.VMID,
 					Name:          i.Name,
@@ -121,6 +134,9 @@ func List(conn types.Conn, uuid string, roles ...string) ([]types.Vm, error) {
 					RAM:           ramMB,
 					Node:          nodeName,
 					Owner:         ownerUUID,
+					ProjectID:     projID,
+					ProjectName:   projName,
+					ProjectColor:  projColor,
 					Networks:      networks,
 					AvailableNICs: availableNICs,
 					Connections:   make([]types.VMConnection, 0),

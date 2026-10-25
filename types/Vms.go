@@ -15,6 +15,9 @@ type Vm struct {
 	OwnerEmail    string                 `json:"owner_email,omitempty"`
 	LabID         string                 `json:"lab_id,omitempty"`
 	LabName       string                 `json:"lab_name,omitempty"`
+	ProjectID     string                 `json:"project_id,omitempty"`
+	ProjectName   string                 `json:"project_name,omitempty"`
+	ProjectColor  string                 `json:"project_color,omitempty"`
 	Node          string                 `json:"node,omitempty"`
 	Name          string                 `json:"name"`
 	Status        string                 `json:"status"`

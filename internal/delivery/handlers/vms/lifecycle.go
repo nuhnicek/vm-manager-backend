@@ -3,6 +3,7 @@ package vms
 import (
 	"fmt"
 	"net/http"
+	"vm-manager-backend/internal/core/projects"
 	"vm-manager-backend/internal/core/vms"
 	"vm-manager-backend/types"
 
@@ -84,6 +85,8 @@ func Delete(conn types.Conn) gin.HandlerFunc {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
+
+		_ = projects.RemoveVMFromAllProjects(conn, body.ID)
 
 		c.JSON(http.StatusOK, gin.H{"status": "deleted", "id": body.ID})
 	}
