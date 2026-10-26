@@ -28,49 +28,97 @@ func OpenVMConsole(conn types.Conn, userUUID string, role string, vmid int, targ
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
+	var term *proxmox.Term
+	var wsURL string
+	var clientForSession *proxmox.Client
+
 	vm, nodeClient, err := conn.FindVM(ctx, vmid, targetNodes...)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get VM %d: %w", vmid, err)
-	}
+	if err == nil && vm != nil {
+		if vm.Template {
+			return nil, fmt.Errorf("cannot open console on template %d", vmid)
+		}
 
-	if vm.Template {
-		return nil, fmt.Errorf("cannot open console on template %d", vmid)
-	}
+		if !VerifyVMOwner(vm, userUUID, role) {
+			return nil, fmt.Errorf("unauthorized: VM %d does not belong to user", vmid)
+		}
 
-	if !VerifyVMOwner(vm, userUUID, role) {
-		return nil, fmt.Errorf("unauthorized: VM %d does not belong to user", vmid)
-	}
+		if !strings.EqualFold(vm.Status, "running") {
+			return nil, fmt.Errorf("VM %d is stopped (please start it first)", vmid)
+		}
 
-	if !strings.EqualFold(vm.Status, "running") {
-		return nil, fmt.Errorf("VM %d is stopped (please start it first)", vmid)
-	}
+		if vm.VirtualMachineConfig != nil && len(vm.VirtualMachineConfig.Serials) == 0 {
+			_ = vm.ConfigSync(ctx, proxmox.VirtualMachineOption{
+				Name:  "serial0",
+				Value: "socket",
+			})
+			return nil, fmt.Errorf("serial console interface was missing for VM %d and has now been configured; please restart (stop and start) the VM to enable console access", vmid)
+		}
 
-	if vm.VirtualMachineConfig != nil && len(vm.VirtualMachineConfig.Serials) == 0 {
-		_ = vm.ConfigSync(ctx, proxmox.VirtualMachineOption{
-			Name:  "serial0",
-			Value: "socket",
-		})
-		return nil, fmt.Errorf("serial console interface was missing for VM %d and has now been configured; please restart (stop and start) the VM to enable console access", vmid)
-	}
+		t, err := vm.TermProxy(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("failed to initialize termproxy: %w", err)
+		}
+		term = t
 
-	term, err := vm.TermProxy(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to initialize termproxy: %w", err)
-	}
+		rawURL := ""
+		if nodeClient != nil && nodeClient.HostURI != "" {
+			rawURL = nodeClient.HostURI
+		} else {
+			rawURL = os.Getenv("PROXMOX_URI")
+			if idx := strings.Index(rawURL, ","); idx != -1 {
+				rawURL = rawURL[:idx]
+			}
+		}
+		wsBase := strings.TrimRight(strings.Replace(rawURL, "https://", "wss://", 1), "/")
+		wsBase = strings.Replace(wsBase, "http://", "ws://", 1)
+		wsURL = fmt.Sprintf("%s/nodes/%s/qemu/%d/vncwebsocket?port=%v&vncticket=%s",
+			wsBase, vm.Node, vm.VMID, term.Port, url.QueryEscape(term.Ticket))
 
-	rawURL := ""
-	if nodeClient != nil && nodeClient.HostURI != "" {
-		rawURL = nodeClient.HostURI
+		if nodeClient != nil && nodeClient.Client != nil {
+			clientForSession = nodeClient.Client
+		} else {
+			clientForSession = conn.Proxmox
+		}
 	} else {
-		rawURL = os.Getenv("PROXMOX_URI")
-		if idx := strings.Index(rawURL, ","); idx != -1 {
-			rawURL = rawURL[:idx]
+		ct, ctNodeClient, ctErr := conn.FindContainer(ctx, vmid, targetNodes...)
+		if ctErr != nil || ct == nil {
+			return nil, fmt.Errorf("machine %d not found in pool", vmid)
+		}
+
+		if !VerifyContainerOwner(ct, userUUID, role) {
+			return nil, fmt.Errorf("unauthorized: container %d does not belong to user", vmid)
+		}
+
+		if !strings.EqualFold(ct.Status, "running") {
+			return nil, fmt.Errorf("container %d is stopped (please start it first)", vmid)
+		}
+
+		t, err := ct.TermProxy(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("failed to initialize termproxy: %w", err)
+		}
+		term = t
+
+		rawURL := ""
+		if ctNodeClient != nil && ctNodeClient.HostURI != "" {
+			rawURL = ctNodeClient.HostURI
+		} else {
+			rawURL = os.Getenv("PROXMOX_URI")
+			if idx := strings.Index(rawURL, ","); idx != -1 {
+				rawURL = rawURL[:idx]
+			}
+		}
+		wsBase := strings.TrimRight(strings.Replace(rawURL, "https://", "wss://", 1), "/")
+		wsBase = strings.Replace(wsBase, "http://", "ws://", 1)
+		wsURL = fmt.Sprintf("%s/nodes/%s/lxc/%d/vncwebsocket?port=%v&vncticket=%s",
+			wsBase, ct.Node, ct.VMID, term.Port, url.QueryEscape(term.Ticket))
+
+		if ctNodeClient != nil && ctNodeClient.Client != nil {
+			clientForSession = ctNodeClient.Client
+		} else {
+			clientForSession = conn.Proxmox
 		}
 	}
-	wsBase := strings.TrimRight(strings.Replace(rawURL, "https://", "wss://", 1), "/")
-	wsBase = strings.Replace(wsBase, "http://", "ws://", 1)
-	wsURL := fmt.Sprintf("%s/nodes/%s/qemu/%d/vncwebsocket?port=%v&vncticket=%s",
-		wsBase, vm.Node, vm.VMID, term.Port, url.QueryEscape(term.Ticket))
 
 	dialer := &websocket.Dialer{
 		HandshakeTimeout: 10 * time.Second,
@@ -79,10 +127,6 @@ func OpenVMConsole(conn types.Conn, userUUID string, role string, vmid int, targ
 	}
 
 	headers := http.Header{}
-	clientForSession := conn.Proxmox
-	if nodeClient != nil && nodeClient.Client != nil {
-		clientForSession = nodeClient.Client
-	}
 	if clientForSession != nil {
 		if sess := clientForSession.Session(); sess != nil {
 			headers.Add("Cookie", "PVEAuthCookie="+sess.Ticket)
@@ -204,31 +248,60 @@ func OpenVMVNC(conn types.Conn, userUUID string, role string, vmid int, targetNo
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
+	var pveSend chan []byte
+	var pveRecv chan []byte
+	var pveErrs chan error
+	var pveCloser func() error
+	var vncTicket string
+
 	vm, _, err := conn.FindVM(ctx, vmid, targetNodes...)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get VM %d: %w", vmid, err)
-	}
+	if err == nil && vm != nil {
+		if vm.Template {
+			return nil, fmt.Errorf("cannot open console on template %d", vmid)
+		}
 
-	if vm.Template {
-		return nil, fmt.Errorf("cannot open console on template %d", vmid)
-	}
+		if !VerifyVMOwner(vm, userUUID, role) {
+			return nil, fmt.Errorf("unauthorized: VM %d does not belong to user", vmid)
+		}
 
-	if !VerifyVMOwner(vm, userUUID, role) {
-		return nil, fmt.Errorf("unauthorized: VM %d does not belong to user", vmid)
-	}
+		if !strings.EqualFold(vm.Status, "running") {
+			return nil, fmt.Errorf("VM %d is stopped (please start it first)", vmid)
+		}
 
-	if !strings.EqualFold(vm.Status, "running") {
-		return nil, fmt.Errorf("VM %d is stopped (please start it first)", vmid)
-	}
+		vnc, err := vm.VNCProxy(ctx, &proxmox.VNCConfig{Websocket: true})
+		if err != nil {
+			return nil, fmt.Errorf("failed to initialize VNC proxy: %w", err)
+		}
+		vncTicket = vnc.Ticket
 
-	vnc, err := vm.VNCProxy(ctx, &proxmox.VNCConfig{Websocket: true})
-	if err != nil {
-		return nil, fmt.Errorf("failed to initialize VNC proxy: %w", err)
-	}
+		pveSend, pveRecv, pveErrs, pveCloser, err = vm.VNCWebSocket(vnc)
+		if err != nil {
+			return nil, fmt.Errorf("failed to open VNC websocket: %w", err)
+		}
+	} else {
+		ct, _, ctErr := conn.FindContainer(ctx, vmid, targetNodes...)
+		if ctErr != nil || ct == nil {
+			return nil, fmt.Errorf("machine %d not found in pool", vmid)
+		}
 
-	pveSend, pveRecv, pveErrs, pveCloser, err := vm.VNCWebSocket(vnc)
-	if err != nil {
-		return nil, fmt.Errorf("failed to open VNC websocket: %w", err)
+		if !VerifyContainerOwner(ct, userUUID, role) {
+			return nil, fmt.Errorf("unauthorized: container %d does not belong to user", vmid)
+		}
+
+		if !strings.EqualFold(ct.Status, "running") {
+			return nil, fmt.Errorf("container %d is stopped (please start it first)", vmid)
+		}
+
+		vnc, err := ct.VNCProxy(ctx, proxmox.VNCProxyOptions{Websocket: "1"})
+		if err != nil {
+			return nil, fmt.Errorf("failed to initialize VNC proxy: %w", err)
+		}
+		vncTicket = vnc.Ticket
+
+		pveSend, pveRecv, pveErrs, pveCloser, err = ct.VNCWebSocket(vnc)
+		if err != nil {
+			return nil, fmt.Errorf("failed to open VNC websocket: %w", err)
+		}
 	}
 
 	clientSend := make(chan []byte, 256)
@@ -362,7 +435,7 @@ func OpenVMVNC(conn types.Conn, userUUID string, role string, vmid int, targetNo
 				return
 			}
 
-			resp := rfbEncrypt(vnc.Ticket, challenge)
+			resp := rfbEncrypt(vncTicket, challenge)
 			select {
 			case <-done:
 				return

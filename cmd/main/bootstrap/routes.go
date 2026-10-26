@@ -49,6 +49,9 @@ func RegisterRouter(router *gin.Engine, conn types.Conn) {
 	router.GET("/vms/console/ws", middleware.Auth(conn), vms.ConsoleWS(conn))
 	router.GET("/vms/console/vnc", middleware.Auth(conn), vms.VNCWS(conn))
 	router.POST("/vms/:id/project", middleware.Auth(conn), projects.AssignVM(conn))
+	router.POST("/vms/ip", middleware.Auth(conn), vms.SetIP(conn))
+	router.GET("/catalog", middleware.Auth(conn), vms.ListCatalog(conn))
+	router.POST("/catalog/deploy", middleware.Auth(conn), vms.DeployCatalog(conn))
 
 	router.GET("/projects", middleware.Auth(conn), projects.List(conn))
 	router.POST("/projects", middleware.Auth(conn), projects.Create(conn))

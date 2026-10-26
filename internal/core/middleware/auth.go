@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"net/http"
+	"strings"
 	"vm-manager-backend/internal/core/auth"
 	"vm-manager-backend/types"
 
@@ -17,6 +18,9 @@ func Auth(conn types.Conn) gin.HandlerFunc {
 		if session == "" {
 			c.AbortWithStatus(http.StatusUnauthorized)
 			return
+		}
+		if strings.HasPrefix(session, "Bearer ") {
+			session = strings.TrimPrefix(session, "Bearer ")
 		}
 		err, uuid, role := auth.Session(session, conn)
 		if err != nil {

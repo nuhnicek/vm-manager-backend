@@ -144,6 +144,30 @@ func (c Conn) FindVM(ctx context.Context, vmid int, targetNodes ...string) (*pro
 	return nil, nil, fmt.Errorf("VM %d not found in pool", vmid)
 }
 
+func (c Conn) FindContainer(ctx context.Context, vmid int, targetNodes ...string) (*proxmox.Container, *ProxmoxNodeClient, error) {
+	pool := c.GetPool()
+	targetNode := ""
+	if len(targetNodes) > 0 && targetNodes[0] != "" {
+		targetNode = targetNodes[0]
+	}
+
+	for i := range pool {
+		nc := pool[i]
+		if targetNode != "" && nc.NodeName != targetNode {
+			continue
+		}
+		node, err := nc.Client.Node(ctx, nc.NodeName)
+		if err != nil {
+			continue
+		}
+		ct, err := node.Container(ctx, vmid)
+		if err == nil && ct != nil {
+			return ct, &nc, nil
+		}
+	}
+	return nil, nil, fmt.Errorf("container %d not found in pool", vmid)
+}
+
 func (c Conn) FindTemplate(ctx context.Context, templateID int, targetNodes ...string) (*proxmox.VirtualMachine, *ProxmoxNodeClient, error) {
 	pool := c.GetPool()
 	targetNode := ""
@@ -170,6 +194,7 @@ func (c Conn) FindTemplate(ctx context.Context, templateID int, targetNodes ...s
 
 func (c Conn) NextPoolVMID(ctx context.Context) (int, error) {
 	pool := c.GetPool()
+	usedIDs := make(map[int]bool)
 	maxID := 199
 	for _, nc := range pool {
 		node, err := nc.Client.Node(ctx, nc.NodeName)
@@ -177,14 +202,29 @@ func (c Conn) NextPoolVMID(ctx context.Context) (int, error) {
 			continue
 		}
 		vms, err := node.VirtualMachines(ctx)
-		if err != nil {
-			continue
+		if err == nil {
+			for _, vm := range vms {
+				id := int(vm.VMID)
+				usedIDs[id] = true
+				if id >= 200 && id < 9000 && id > maxID {
+					maxID = id
+				}
+			}
 		}
-		for _, vm := range vms {
-			if int(vm.VMID) > maxID {
-				maxID = int(vm.VMID)
+		cts, err := node.Containers(ctx)
+		if err == nil {
+			for _, ct := range cts {
+				id := int(ct.VMID)
+				usedIDs[id] = true
+				if id >= 200 && id < 9000 && id > maxID {
+					maxID = id
+				}
 			}
 		}
 	}
-	return maxID + 1, nil
+	candidate := maxID + 1
+	for usedIDs[candidate] {
+		candidate++
+	}
+	return candidate, nil
 }
