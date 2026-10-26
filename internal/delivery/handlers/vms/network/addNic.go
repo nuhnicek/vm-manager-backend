@@ -17,6 +17,12 @@ type addNicBody struct {
 func AddNIC(conn types.Conn) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		uuid, _ := c.Get("uuid")
+		roleVal, _ := c.Get("role")
+		role := ""
+		if r, ok := roleVal.(string); ok {
+			role = r
+		}
+
 		var body addNicBody
 		if err := c.ShouldBindJSON(&body); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
@@ -28,9 +34,9 @@ func AddNIC(conn types.Conn) gin.HandlerFunc {
 			userUUID = uuid.(string)
 		}
 
-		nic, err := vlan.AddNIC(conn, userUUID, strconv.Itoa(body.Vmid))
+		nic, err := vlan.AddNIC(conn, userUUID, strconv.Itoa(body.Vmid), role)
 		if err != nil {
-			fmt.Printf("failed to add NIC to VM %d: %v\n", body.Vmid, err)
+			fmt.Printf("failed to add NIC to machine %d: %v\n", body.Vmid, err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}

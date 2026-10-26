@@ -6,11 +6,9 @@ import (
 	"strconv"
 	"time"
 	"vm-manager-backend/types"
-
-	"github.com/luthermonson/go-proxmox"
 )
 
-func ConnectVLAN(vm1id string, nic1 string, vm2id string, nic2 string, conn types.Conn, userUUID string) error {
+func ConnectVLAN(vm1id string, nic1 string, vm2id string, nic2 string, conn types.Conn, userUUID string, roles ...string) error {
 	id1, err := strconv.Atoi(vm1id)
 	if err != nil {
 		return fmt.Errorf("invalid vm1id: %w", err)
@@ -28,23 +26,23 @@ func ConnectVLAN(vm1id string, nic1 string, vm2id string, nic2 string, conn type
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	vm1, _, err := conn.FindVM(ctx, id1)
+	m1, err := FindEndpoint(ctx, conn, id1)
 	if err != nil {
-		return fmt.Errorf("failed to get vm1: %w", err)
+		return err
 	}
 
-	vm2, _, err := conn.FindVM(ctx, id2)
+	m2, err := FindEndpoint(ctx, conn, id2)
 	if err != nil {
-		return fmt.Errorf("failed to get vm2: %w", err)
+		return err
 	}
 
-	if !verifyOwner(vm1, userUUID) || !verifyOwner(vm2, userUUID) {
-		return fmt.Errorf("unauthorized: VMs do not belong to user")
+	if !verifyOwner(m1.Tags, userUUID, roles...) || !verifyOwner(m2.Tags, userUUID, roles...) {
+		return fmt.Errorf("unauthorized: machines do not belong to user")
 	}
 
 	vm1Net := nic1
 	if vm1Net == "" {
-		vm1Net, err = GetNextAvailableNet(vm1)
+		vm1Net, err = m1.NextAvailableNet()
 		if err != nil {
 			return err
 		}
@@ -52,29 +50,22 @@ func ConnectVLAN(vm1id string, nic1 string, vm2id string, nic2 string, conn type
 
 	vm2Net := nic2
 	if vm2Net == "" {
-		vm2Net, err = GetNextAvailableNet(vm2)
+		vm2Net, err = m2.NextAvailableNet()
 		if err != nil {
 			return err
 		}
 	}
 
-	networkConfig := fmt.Sprintf("model=virtio,bridge=vmbr0,tag=%d,firewall=1", vlanTag)
-
-	err = vm1.ConfigSync(ctx, proxmox.VirtualMachineOption{
-		Name:  vm1Net,
-		Value: networkConfig,
-	})
+	err = m1.ApplyVLAN(ctx, vm1Net, vlanTag)
 	if err != nil {
-		return fmt.Errorf("failed to connect vm1 to network %d: %w", vlanTag, err)
+		return fmt.Errorf("failed to connect machine %d to network %d: %w", id1, vlanTag, err)
 	}
 
-	err = vm2.ConfigSync(ctx, proxmox.VirtualMachineOption{
-		Name:  vm2Net,
-		Value: networkConfig,
-	})
+	err = m2.ApplyVLAN(ctx, vm2Net, vlanTag)
 	if err != nil {
-		return fmt.Errorf("failed to connect vm2 to network %d: %w", vlanTag, err)
+		return fmt.Errorf("failed to connect machine %d to network %d: %w", id2, vlanTag, err)
 	}
+
 	return nil
 }
 
