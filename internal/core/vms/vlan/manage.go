@@ -421,3 +421,92 @@ func DisconnectVLAN(conn types.Conn, userUUID string, vm1id string, vm2id string
 
 	return nil
 }
+
+func ConnectToLabNetwork(conn types.Conn, userUUID string, vmID string, roles ...string) error {
+	id, err := strconv.Atoi(vmID)
+	if err != nil {
+		return fmt.Errorf("invalid vmid: %w", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	m, err := FindEndpoint(ctx, conn, id)
+	if err != nil {
+		return err
+	}
+
+	if !verifyOwner(m.Tags, userUUID, roles...) {
+		return fmt.Errorf("unauthorized: machine %d does not belong to user", id)
+	}
+
+	for nic, val := range m.Nets {
+		if ParseVLAN(val) == 0 {
+			if m.IsCT {
+				if !strings.Contains(val, "ip=") || strings.Contains(val, "ip=none") {
+					newVal := removeTagFromNetConfig(val)
+					if !strings.Contains(newVal, "ip=") {
+						newVal = newVal + ",ip=dhcp"
+					}
+					return m.SetNIC(ctx, nic, newVal)
+				}
+			}
+			return nil
+		}
+	}
+
+	var targetNIC string
+	if _, exists := m.Nets["net0"]; !exists {
+		targetNIC = "net0"
+	} else {
+		next, err := m.NextAvailableNet()
+		if err != nil {
+			return err
+		}
+		targetNIC = next
+	}
+
+	var nicConfig string
+	if m.IsCT {
+		idx := parseNetIndex(targetNIC)
+		nicConfig = fmt.Sprintf("name=eth%d,bridge=vmbr0,ip=dhcp", idx)
+	} else {
+		nicConfig = "model=virtio,bridge=vmbr0,firewall=1"
+	}
+
+	return m.SetNIC(ctx, targetNIC, nicConfig)
+}
+
+func DisconnectFromLabNetwork(conn types.Conn, userUUID string, vmID string, roles ...string) error {
+	id, err := strconv.Atoi(vmID)
+	if err != nil {
+		return fmt.Errorf("invalid vmid: %w", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	m, err := FindEndpoint(ctx, conn, id)
+	if err != nil {
+		return err
+	}
+
+	if !verifyOwner(m.Tags, userUUID, roles...) {
+		return fmt.Errorf("unauthorized: machine %d does not belong to user", id)
+	}
+
+	for nic, val := range m.Nets {
+		if ParseVLAN(val) == 0 {
+			if len(m.Nets) > 1 {
+				_ = m.DeleteNIC(ctx, nic)
+			} else {
+				if m.IsCT {
+					_ = m.SetNIC(ctx, nic, fmt.Sprintf("name=%s,bridge=vmbr0,tag=4094,ip=none", nic))
+				} else {
+					_ = m.SetNIC(ctx, nic, "model=virtio,bridge=vmbr0,tag=4094,firewall=1")
+				}
+			}
+		}
+	}
+	return nil
+}

@@ -56,6 +56,17 @@ func isVulnerableTarget(name, tags string) bool {
 	return false
 }
 
+func isAttackerMachine(name, tags string) bool {
+	lower := strings.ToLower(name + ";" + tags)
+	keywords := []string{"kali", "attacker", "attack", "pentest", "parrot", "blackarch"}
+	for _, kw := range keywords {
+		if strings.Contains(lower, kw) {
+			return true
+		}
+	}
+	return false
+}
+
 func List(conn types.Conn, uuid string, roles ...string) ([]types.Vm, error) {
 	role := ""
 	if len(roles) > 0 {
@@ -106,6 +117,8 @@ func List(conn types.Conn, uuid string, roles ...string) ([]types.Vm, error) {
 					networks := make([]string, 0)
 					availableNICs := make([]string, 0)
 					nicTags := make(map[string]int)
+					hasInternet := false
+					isAttacker := isAttackerMachine(i.Name, i.Tags)
 
 					status := "Stopped"
 					if strings.EqualFold(i.Status, "running") {
@@ -138,6 +151,8 @@ func List(conn types.Conn, uuid string, roles ...string) ([]types.Vm, error) {
 											vmID: fmt.Sprint(i.VMID),
 											nic:  netKey,
 										})
+									} else {
+										hasInternet = true
 									}
 								}
 							}
@@ -229,6 +244,8 @@ func List(conn types.Conn, uuid string, roles ...string) ([]types.Vm, error) {
 						Networks:      networks,
 						AvailableNICs: availableNICs,
 						Connections:   make([]types.VMConnection, 0),
+						HasInternet:   hasInternet,
+						IsAttacker:    isAttacker,
 					}
 
 					rawList = append(rawList, rawVMData{
@@ -258,6 +275,8 @@ func List(conn types.Conn, uuid string, roles ...string) ([]types.Vm, error) {
 					networks := make([]string, 0)
 					availableNICs := make([]string, 0)
 					nicTags := make(map[string]int)
+					hasInternet := false
+					isAttacker := isAttackerMachine(ct.Name, ct.Tags)
 
 					status := "Stopped"
 					if strings.EqualFold(ct.Status, "running") {
@@ -286,6 +305,8 @@ func List(conn types.Conn, uuid string, roles ...string) ([]types.Vm, error) {
 												vmID: fmt.Sprint(ct.VMID),
 												nic:  netKey,
 											})
+										} else {
+											hasInternet = true
 										}
 										if netKey == "net0" {
 											cfgIP, cfgGW = parseIPAndGateway(netVal)
@@ -374,6 +395,8 @@ func List(conn types.Conn, uuid string, roles ...string) ([]types.Vm, error) {
 						Networks:      networks,
 						AvailableNICs: availableNICs,
 						Connections:   make([]types.VMConnection, 0),
+						HasInternet:   hasInternet,
+						IsAttacker:    isAttacker,
 					}
 
 					rawList = append(rawList, rawVMData{

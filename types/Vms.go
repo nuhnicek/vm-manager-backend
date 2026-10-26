@@ -37,6 +37,8 @@ type Vm struct {
 	Networks      []string               `json:"networks"`
 	AvailableNICs []string               `json:"available_nics"`
 	Connections   []VMConnection         `json:"connections"`
+	HasInternet   bool                   `json:"has_internet"`
+	IsAttacker    bool                   `json:"is_attacker"`
 }
 
 type ProxmoxNodeInfo struct {

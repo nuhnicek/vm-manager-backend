@@ -567,31 +567,60 @@ func StreamVMVNC(conn types.Conn, userUUID string, role string, vmid int, client
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
+	var pveSend chan []byte
+	var pveRecv chan []byte
+	var pveErrs chan error
+	var pveCloser func() error
+	var vncTicket string
+
 	vm, _, err := conn.FindVM(ctx, vmid, targetNodes...)
-	if err != nil {
-		return fmt.Errorf("failed to get VM %d: %w", vmid, err)
-	}
+	if err == nil && vm != nil {
+		if vm.Template {
+			return fmt.Errorf("cannot open console on template %d", vmid)
+		}
 
-	if vm.Template {
-		return fmt.Errorf("cannot open console on template %d", vmid)
-	}
+		if !VerifyVMOwner(vm, userUUID, role) {
+			return fmt.Errorf("unauthorized: VM %d does not belong to user", vmid)
+		}
 
-	if !VerifyVMOwner(vm, userUUID, role) {
-		return fmt.Errorf("unauthorized: VM %d does not belong to user", vmid)
-	}
+		if !strings.EqualFold(vm.Status, "running") {
+			return fmt.Errorf("VM %d is stopped (please start it first)", vmid)
+		}
 
-	if !strings.EqualFold(vm.Status, "running") {
-		return fmt.Errorf("VM %d is stopped (please start it first)", vmid)
-	}
+		vnc, err := vm.VNCProxy(ctx, &proxmox.VNCConfig{Websocket: true})
+		if err != nil {
+			return fmt.Errorf("failed to initialize VNC proxy: %w", err)
+		}
+		vncTicket = vnc.Ticket
 
-	vnc, err := vm.VNCProxy(ctx, &proxmox.VNCConfig{Websocket: true})
-	if err != nil {
-		return fmt.Errorf("failed to initialize VNC proxy: %w", err)
-	}
+		pveSend, pveRecv, pveErrs, pveCloser, err = vm.VNCWebSocket(vnc)
+		if err != nil {
+			return fmt.Errorf("failed to open VNC websocket: %w", err)
+		}
+	} else {
+		ct, _, ctErr := conn.FindContainer(ctx, vmid, targetNodes...)
+		if ctErr != nil || ct == nil {
+			return fmt.Errorf("machine %d not found in pool", vmid)
+		}
 
-	pveSend, pveRecv, pveErrs, pveCloser, err := vm.VNCWebSocket(vnc)
-	if err != nil {
-		return fmt.Errorf("failed to open VNC websocket: %w", err)
+		if !VerifyContainerOwner(ct, userUUID, role) {
+			return fmt.Errorf("unauthorized: container %d does not belong to user", vmid)
+		}
+
+		if !strings.EqualFold(ct.Status, "running") {
+			return fmt.Errorf("container %d is stopped (please start it first)", vmid)
+		}
+
+		vnc, err := ct.VNCProxy(ctx, proxmox.VNCProxyOptions{Websocket: "1"})
+		if err != nil {
+			return fmt.Errorf("failed to initialize VNC proxy: %w", err)
+		}
+		vncTicket = vnc.Ticket
+
+		pveSend, pveRecv, pveErrs, pveCloser, err = ct.VNCWebSocket(vnc)
+		if err != nil {
+			return fmt.Errorf("failed to open VNC websocket: %w", err)
+		}
 	}
 
 	done := make(chan struct{})
@@ -684,7 +713,7 @@ func StreamVMVNC(conn types.Conn, userUUID string, role string, vmid int, client
 			return fmt.Errorf("invalid VNC challenge length %d", len(challenge))
 		}
 
-		resp := rfbEncrypt(vnc.Ticket, challenge)
+		resp := rfbEncrypt(vncTicket, challenge)
 		select {
 		case <-done:
 			return nil
@@ -738,6 +767,26 @@ func StreamVMVNC(conn types.Conn, userUUID string, role string, vmid int, client
 
 	_ = clientWS.SetReadDeadline(time.Time{})
 
+	writeQueue := make(chan []byte, 1024)
+
+	go func() {
+		defer safeClose()
+		for {
+			select {
+			case <-done:
+				return
+			case msg, ok := <-writeQueue:
+				if !ok {
+					return
+				}
+				_ = clientWS.SetWriteDeadline(time.Now().Add(5 * time.Second))
+				if err := clientWS.WriteMessage(websocket.BinaryMessage, msg); err != nil {
+					return
+				}
+			}
+		}
+	}()
+
 	go func() {
 		defer safeClose()
 		for {
@@ -763,8 +812,10 @@ func StreamVMVNC(conn types.Conn, userUUID string, role string, vmid int, client
 			if !ok {
 				return nil
 			}
-			if err := clientWS.WriteMessage(websocket.BinaryMessage, msg); err != nil {
-				return err
+			select {
+			case writeQueue <- msg:
+			case <-done:
+				return nil
 			}
 		case err, ok := <-pveErrs:
 			if ok && err != nil {
