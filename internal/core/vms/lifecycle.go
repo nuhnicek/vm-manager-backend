@@ -58,12 +58,9 @@ func StartVM(conn types.Conn, userUUID string, role string, vmid int, targetNode
 		if !VerifyVMOwner(vm, userUUID, role) {
 			return fmt.Errorf("unauthorized: VM %d does not belong to user", vmid)
 		}
-		task, err := vm.Start(ctx)
+		_, err := vm.Start(ctx)
 		if err != nil {
 			return fmt.Errorf("failed to start VM %d: %w", vmid, err)
-		}
-		if task != nil {
-			_ = task.WaitFor(ctx, 3)
 		}
 		return nil
 	}
@@ -73,12 +70,9 @@ func StartVM(conn types.Conn, userUUID string, role string, vmid int, targetNode
 		if !VerifyContainerOwner(ct, userUUID, role) {
 			return fmt.Errorf("unauthorized: container %d does not belong to user", vmid)
 		}
-		task, err := ct.Start(ctx)
+		_, err := ct.Start(ctx)
 		if err != nil {
 			return fmt.Errorf("failed to start container %d: %w", vmid, err)
-		}
-		if task != nil {
-			_ = task.WaitFor(ctx, 3)
 		}
 		return nil
 	}
@@ -98,12 +92,9 @@ func StopVM(conn types.Conn, userUUID string, role string, vmid int, targetNodes
 		if !VerifyVMOwner(vm, userUUID, role) {
 			return fmt.Errorf("unauthorized: VM %d does not belong to user", vmid)
 		}
-		task, err := vm.Stop(ctx)
+		_, err := vm.Stop(ctx)
 		if err != nil {
 			return fmt.Errorf("failed to stop VM %d: %w", vmid, err)
-		}
-		if task != nil {
-			_ = task.WaitFor(ctx, 3)
 		}
 		return nil
 	}
@@ -113,12 +104,9 @@ func StopVM(conn types.Conn, userUUID string, role string, vmid int, targetNodes
 		if !VerifyContainerOwner(ct, userUUID, role) {
 			return fmt.Errorf("unauthorized: container %d does not belong to user", vmid)
 		}
-		task, err := ct.Stop(ctx)
+		_, err := ct.Stop(ctx)
 		if err != nil {
 			return fmt.Errorf("failed to stop container %d: %w", vmid, err)
-		}
-		if task != nil {
-			_ = task.WaitFor(ctx, 3)
 		}
 		return nil
 	}

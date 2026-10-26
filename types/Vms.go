@@ -53,6 +53,7 @@ type ProxmoxNodeInfo struct {
 
 type SetIPRequest struct {
 	VMID       int    `json:"vmid"`
+	NIC        string `json:"nic,omitempty"`
 	IP         string `json:"ip"`
 	Gateway    string `json:"gateway,omitempty"`
 	IsDHCP     bool   `json:"is_dhcp"`

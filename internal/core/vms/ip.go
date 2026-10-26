@@ -4,12 +4,22 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"strconv"
 	"strings"
 	"time"
 	"vm-manager-backend/types"
 
 	"github.com/luthermonson/go-proxmox"
 )
+
+func parseNetIdx(nic string) int {
+	clean := strings.TrimPrefix(strings.ToLower(nic), "net")
+	idx, err := strconv.Atoi(clean)
+	if err != nil {
+		return 0
+	}
+	return idx
+}
 
 func SetMachineIP(conn types.Conn, userUUID, role string, req types.SetIPRequest) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -34,6 +44,12 @@ func SetMachineIP(conn types.Conn, userUUID, role string, req types.SetIPRequest
 		}
 	}
 
+	targetNIC := strings.ToLower(strings.TrimSpace(req.NIC))
+	if targetNIC == "" {
+		targetNIC = "net0"
+	}
+	idx := parseNetIdx(targetNIC)
+
 	vm, _, err := conn.FindVM(ctx, req.VMID, req.TargetNode)
 	if err == nil && vm != nil {
 		if !VerifyVMOwner(vm, userUUID, role) {
@@ -51,22 +67,29 @@ func SetMachineIP(conn types.Conn, userUUID, role string, req types.SetIPRequest
 		}
 
 		options := []proxmox.VirtualMachineOption{
-			{Name: "ipconfig0", Value: ipconfigVal},
+			{Name: fmt.Sprintf("ipconfig%d", idx), Value: ipconfigVal},
 		}
 
-		if vm.VirtualMachineConfig != nil && len(vm.VirtualMachineConfig.Nets) == 0 {
+		if vm.VirtualMachineConfig != nil && vm.VirtualMachineConfig.Nets != nil {
+			if _, exists := vm.VirtualMachineConfig.Nets[targetNIC]; !exists {
+				options = append(options, proxmox.VirtualMachineOption{
+					Name:  targetNIC,
+					Value: "model=virtio,bridge=vmbr0,firewall=1",
+				})
+			}
+		} else if idx == 0 {
 			options = append(options, proxmox.VirtualMachineOption{
 				Name:  "net0",
-				Value: "virtio,bridge=vmbr0,firewall=1",
+				Value: "model=virtio,bridge=vmbr0,firewall=1",
 			})
 		}
 
-		task, err := vm.Config(ctx, options...)
+		_, err := vm.Config(ctx, options...)
 		if err != nil {
-			return fmt.Errorf("failed to configure VM IP: %w", err)
-		}
-		if task != nil {
-			_ = task.WaitFor(ctx, 3)
+			err = vm.ConfigSync(ctx, options...)
+			if err != nil {
+				return fmt.Errorf("failed to configure VM IP: %w", err)
+			}
 		}
 		return nil
 	}
@@ -77,14 +100,14 @@ func SetMachineIP(conn types.Conn, userUUID, role string, req types.SetIPRequest
 			return fmt.Errorf("unauthorized: container %d does not belong to user", req.VMID)
 		}
 
-		name := "eth0"
+		name := fmt.Sprintf("eth%d", idx)
 		bridge := "vmbr0"
 		hwaddr := ""
 		tag := ""
 
 		if ct.ContainerConfig != nil && ct.ContainerConfig.Nets != nil {
-			if existingNet0, exists := ct.ContainerConfig.Nets["net0"]; exists {
-				parts := strings.Split(existingNet0, ",")
+			if existingNet, exists := ct.ContainerConfig.Nets[targetNIC]; exists {
+				parts := strings.Split(existingNet, ",")
 				for _, part := range parts {
 					kv := strings.SplitN(strings.TrimSpace(part), "=", 2)
 					if len(kv) == 2 {
@@ -104,31 +127,28 @@ func SetMachineIP(conn types.Conn, userUUID, role string, req types.SetIPRequest
 			}
 		}
 
-		var net0Val string
+		var netVal string
 		if req.IsDHCP {
-			net0Val = fmt.Sprintf("name=%s,bridge=%s,ip=dhcp", name, bridge)
+			netVal = fmt.Sprintf("name=%s,bridge=%s,ip=dhcp", name, bridge)
 		} else {
-			net0Val = fmt.Sprintf("name=%s,bridge=%s,ip=%s", name, bridge, ipStr)
+			netVal = fmt.Sprintf("name=%s,bridge=%s,ip=%s", name, bridge, ipStr)
 			if gwStr != "" {
-				net0Val += fmt.Sprintf(",gw=%s", gwStr)
+				netVal += fmt.Sprintf(",gw=%s", gwStr)
 			}
 		}
 		if hwaddr != "" {
-			net0Val += fmt.Sprintf(",hwaddr=%s", hwaddr)
+			netVal += fmt.Sprintf(",hwaddr=%s", hwaddr)
 		}
 		if tag != "" {
-			net0Val += fmt.Sprintf(",tag=%s", tag)
+			netVal += fmt.Sprintf(",tag=%s", tag)
 		}
 
-		task, err := ct.Config(ctx, proxmox.ContainerOption{
-			Name:  "net0",
-			Value: net0Val,
+		_, err := ct.Config(ctx, proxmox.ContainerOption{
+			Name:  targetNIC,
+			Value: netVal,
 		})
 		if err != nil {
 			return fmt.Errorf("failed to configure container IP: %w", err)
-		}
-		if task != nil {
-			_ = task.WaitFor(ctx, 3)
 		}
 		return nil
 	}
