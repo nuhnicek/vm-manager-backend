@@ -28,6 +28,11 @@ type Vm struct {
 	Gateway       string                 `json:"gateway,omitempty"`
 	IsVulnerable  bool                   `json:"is_vulnerable,omitempty"`
 	Category      string                 `json:"category,omitempty"`
+	CVEID         string                 `json:"cve_id,omitempty"`
+	CVSS          string                 `json:"cvss,omitempty"`
+	Port          int                    `json:"port,omitempty"`
+	ExploitHint   string                 `json:"exploit_hint,omitempty"`
+	ExploitDoc    string                 `json:"exploit_doc,omitempty"`
 	Owner         string                 `json:"owner,omitempty"`
 	Networks      []string               `json:"networks"`
 	AvailableNICs []string               `json:"available_nics"`
@@ -65,6 +70,11 @@ type CatalogItem struct {
 	DefaultCPUs  int    `json:"default_cpus"`
 	IsVulnerable bool   `json:"is_vulnerable"`
 	Ready        bool   `json:"ready"`
+	CVEID        string `json:"cve_id,omitempty"`
+	CVSS         string `json:"cvss,omitempty"`
+	Port         int    `json:"port,omitempty"`
+	ExploitHint  string `json:"exploit_hint,omitempty"`
+	ExploitDoc   string `json:"exploit_doc,omitempty"`
 }
 
 type DeployCatalogRequest struct {

@@ -174,6 +174,22 @@ func List(conn types.Conn, uuid string, roles ...string) ([]types.Vm, error) {
 						category = "Vulnerable Target"
 					}
 
+					var cveID, cvss, exploitHint, exploitDoc string
+					var port int
+					if catItem := MatchCatalogItem(i.Name, i.Tags); catItem != nil {
+						isVuln = true
+						category = catItem.Category
+						cveID = catItem.CVEID
+						cvss = catItem.CVSS
+						port = catItem.Port
+						targetIP := runtimeIP
+						if targetIP == "" {
+							targetIP = "<IP>"
+						}
+						exploitHint = strings.ReplaceAll(catItem.ExploitHint, "{IP}", targetIP)
+						exploitDoc = catItem.ExploitDoc
+					}
+
 					nodeName := nc.NodeName
 					if role != "teacher" && role != "admin" {
 						nodeName = ""
@@ -202,6 +218,11 @@ func List(conn types.Conn, uuid string, roles ...string) ([]types.Vm, error) {
 						Gateway:       cfgGW,
 						IsVulnerable:  isVuln,
 						Category:      category,
+						CVEID:         cveID,
+						CVSS:          cvss,
+						Port:          port,
+						ExploitHint:   exploitHint,
+						ExploitDoc:    exploitDoc,
 						ProjectID:     projID,
 						ProjectName:   projName,
 						ProjectColor:  projColor,
@@ -298,6 +319,22 @@ func List(conn types.Conn, uuid string, roles ...string) ([]types.Vm, error) {
 						category = "Vulnerable Target"
 					}
 
+					var cveID, cvss, exploitHint, exploitDoc string
+					var port int
+					if catItem := MatchCatalogItem(ct.Name, ct.Tags); catItem != nil {
+						isVuln = true
+						category = catItem.Category
+						cveID = catItem.CVEID
+						cvss = catItem.CVSS
+						port = catItem.Port
+						targetIP := runtimeIP
+						if targetIP == "" {
+							targetIP = "<IP>"
+						}
+						exploitHint = strings.ReplaceAll(catItem.ExploitHint, "{IP}", targetIP)
+						exploitDoc = catItem.ExploitDoc
+					}
+
 					nodeName := nc.NodeName
 					if role != "teacher" && role != "admin" {
 						nodeName = ""
@@ -326,6 +363,11 @@ func List(conn types.Conn, uuid string, roles ...string) ([]types.Vm, error) {
 						Gateway:       cfgGW,
 						IsVulnerable:  isVuln,
 						Category:      category,
+						CVEID:         cveID,
+						CVSS:          cvss,
+						Port:          port,
+						ExploitHint:   exploitHint,
+						ExploitDoc:    exploitDoc,
 						ProjectID:     projID,
 						ProjectName:   projName,
 						ProjectColor:  projColor,
