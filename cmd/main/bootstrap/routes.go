@@ -53,6 +53,8 @@ func RegisterRouter(router *gin.Engine, conn types.Conn) {
 	router.POST("/vms/console/external", middleware.Auth(conn), vms.StartExternalVNC(conn))
 	router.GET("/vms/console/external/file", middleware.Auth(conn), vms.DownloadVNCProfile(conn))
 	router.DELETE("/vms/console/external/:vmid", middleware.Auth(conn), vms.StopExternalVNC(conn))
+	router.GET("/vms/console/clipboard", middleware.Auth(conn), vms.GetConsoleClipboard(conn))
+	router.POST("/vms/console/clipboard", middleware.Auth(conn), vms.SetConsoleClipboard(conn))
 	router.POST("/vms/:id/project", middleware.Auth(conn), projects.AssignVM(conn))
 	router.POST("/vms/ip", middleware.Auth(conn), vms.SetIP(conn))
 	router.GET("/catalog", middleware.Auth(conn), vms.ListCatalog(conn))

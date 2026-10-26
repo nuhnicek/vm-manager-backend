@@ -587,6 +587,13 @@ func StreamVMVNC(conn types.Conn, userUUID string, role string, vmid int, client
 			return fmt.Errorf("VM %d is stopped (please start it first)", vmid)
 		}
 
+		if vm.VirtualMachineConfig != nil && vm.VirtualMachineConfig.VGA != "" && !strings.Contains(vm.VirtualMachineConfig.VGA, "clipboard=vnc") {
+			_ = vm.ConfigSync(ctx, proxmox.VirtualMachineOption{
+				Name:  "vga",
+				Value: vm.VirtualMachineConfig.VGA + ",clipboard=vnc",
+			})
+		}
+
 		vnc, err := vm.VNCProxy(ctx, &proxmox.VNCConfig{Websocket: true})
 		if err != nil {
 			return fmt.Errorf("failed to initialize VNC proxy: %w", err)

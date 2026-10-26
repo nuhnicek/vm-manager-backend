@@ -60,6 +60,10 @@ func CreateFromTemplate(conn types.Conn, ownerUUID string, vmName string, templa
 			Name:  "serial0",
 			Value: "socket",
 		},
+		proxmox.VirtualMachineOption{
+			Name:  "vga",
+			Value: "std,clipboard=vnc",
+		},
 	)
 
 	if err != nil {

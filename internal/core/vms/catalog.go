@@ -477,6 +477,8 @@ func DeployCatalogItem(conn types.Conn, userUUID, role string, req types.DeployC
 
 		cfgOpts := []proxmox.VirtualMachineOption{
 			{Name: "tags", Value: tags},
+			{Name: "serial0", Value: "socket"},
+			{Name: "vga", Value: "std,clipboard=vnc"},
 		}
 
 		if req.RAM > 0 {
