@@ -184,16 +184,15 @@ func (m *MachineEndpoint) UntagNIC(ctx context.Context, nic string) error {
 	if !exists || val == "" {
 		return nil
 	}
+	if nic != "net0" {
+		return m.DeleteNIC(ctx, nic)
+	}
 	newVal := removeTagFromNetConfig(val)
 	if newVal == "" {
-		if nic == "net0" {
-			if m.IsCT {
-				newVal = "name=eth0,bridge=vmbr0,ip=dhcp"
-			} else {
-				newVal = "model=virtio,bridge=vmbr0,firewall=1"
-			}
+		if m.IsCT {
+			newVal = "name=eth0,bridge=vmbr0,ip=dhcp"
 		} else {
-			return m.DeleteNIC(ctx, nic)
+			newVal = "model=virtio,bridge=vmbr0,firewall=1"
 		}
 	}
 	return m.SetNIC(ctx, nic, newVal)
@@ -455,6 +454,12 @@ func ConnectToLabNetwork(conn types.Conn, userUUID string, vmID string, roles ..
 		}
 	}
 
+	for nic, val := range m.Nets {
+		if ParseVLAN(val) == 4094 {
+			_ = m.DeleteNIC(ctx, nic)
+		}
+	}
+
 	var targetNIC string
 	if _, exists := m.Nets["net0"]; !exists {
 		targetNIC = "net0"
@@ -495,17 +500,17 @@ func DisconnectFromLabNetwork(conn types.Conn, userUUID string, vmID string, rol
 		return fmt.Errorf("unauthorized: machine %d does not belong to user", id)
 	}
 
+	toDelete := make([]string, 0)
 	for nic, val := range m.Nets {
-		if ParseVLAN(val) == 0 {
-			if len(m.Nets) > 1 {
-				_ = m.DeleteNIC(ctx, nic)
-			} else {
-				if m.IsCT {
-					_ = m.SetNIC(ctx, nic, fmt.Sprintf("name=%s,bridge=vmbr0,tag=4094,ip=none", nic))
-				} else {
-					_ = m.SetNIC(ctx, nic, "model=virtio,bridge=vmbr0,tag=4094,firewall=1")
-				}
-			}
+		vlan := ParseVLAN(val)
+		if vlan == 0 || vlan == 4094 {
+			toDelete = append(toDelete, nic)
+		}
+	}
+
+	for _, nic := range toDelete {
+		if err := m.DeleteNIC(ctx, nic); err != nil {
+			return fmt.Errorf("failed to delete interface %s: %w", nic, err)
 		}
 	}
 	return nil

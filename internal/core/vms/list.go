@@ -145,13 +145,13 @@ func List(conn types.Conn, uuid string, roles ...string) ([]types.Vm, error) {
 									networks = append(networks, fmt.Sprintf("%s: %s", netKey, netVal))
 									availableNICs = append(availableNICs, netKey)
 									tag := parseVLAN(netVal)
-									if tag > 0 {
+									if tag > 0 && tag != 4094 {
 										nicTags[netKey] = tag
 										tagMap[tag] = append(tagMap[tag], vmNetEndpoint{
 											vmID: fmt.Sprint(i.VMID),
 											nic:  netKey,
 										})
-									} else {
+									} else if tag == 0 {
 										hasInternet = true
 									}
 								}
@@ -299,13 +299,13 @@ func List(conn types.Conn, uuid string, roles ...string) ([]types.Vm, error) {
 										networks = append(networks, fmt.Sprintf("%s: %s", netKey, netVal))
 										availableNICs = append(availableNICs, netKey)
 										tag := parseVLAN(netVal)
-										if tag > 0 {
+										if tag > 0 && tag != 4094 {
 											nicTags[netKey] = tag
 											tagMap[tag] = append(tagMap[tag], vmNetEndpoint{
 												vmID: fmt.Sprint(ct.VMID),
 												nic:  netKey,
 											})
-										} else {
+										} else if tag == 0 {
 											hasInternet = true
 										}
 										if netKey == "net0" {
