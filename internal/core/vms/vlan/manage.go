@@ -126,12 +126,20 @@ func (m *MachineEndpoint) SetNIC(ctx context.Context, nic string, value string) 
 		m.Nets[nic] = value
 		return nil
 	}
-	err := m.VM.ConfigSync(ctx, proxmox.VirtualMachineOption{
+	task, err := m.VM.Config(ctx, proxmox.VirtualMachineOption{
 		Name:  nic,
 		Value: value,
 	})
 	if err != nil {
-		return err
+		err = m.VM.ConfigSync(ctx, proxmox.VirtualMachineOption{
+			Name:  nic,
+			Value: value,
+		})
+		if err != nil {
+			return err
+		}
+	} else if task != nil {
+		_ = task.WaitFor(ctx, 3)
 	}
 	m.Nets[nic] = value
 	return nil
@@ -152,12 +160,20 @@ func (m *MachineEndpoint) DeleteNIC(ctx context.Context, nic string) error {
 		delete(m.Nets, nic)
 		return nil
 	}
-	err := m.VM.ConfigSync(ctx, proxmox.VirtualMachineOption{
+	task, err := m.VM.Config(ctx, proxmox.VirtualMachineOption{
 		Name:  "delete",
 		Value: nic,
 	})
 	if err != nil {
-		return err
+		err = m.VM.ConfigSync(ctx, proxmox.VirtualMachineOption{
+			Name:  "delete",
+			Value: nic,
+		})
+		if err != nil {
+			return err
+		}
+	} else if task != nil {
+		_ = task.WaitFor(ctx, 3)
 	}
 	delete(m.Nets, nic)
 	return nil
