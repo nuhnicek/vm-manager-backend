@@ -109,7 +109,7 @@ var defaultCatalog = []types.CatalogItem{
 		Name:         "VulnHub Linux CTF Box (LXC)",
 		Type:         "lxc",
 		Category:     "Zranitelné cíle",
-		Description:  "Extrémně rychlý zranitelný Linux kontejner pro nácvik CTF výzev, eskalace práv (privesc) a zranitelností síťových démonů. Okamžitý start do 2 sekund.",
+		Description:  "Extrémně rychlý zranitelný Linux kontejner pro nácvik CTF výzev, eskalace práv (privesc) a zranitelností síťových démonů. Výchozí přihlášení: root / toor.",
 		OSTemplate:   "local:vztmpl/alpine-3.24-default_20260714_amd64.tar.xz",
 		DefaultRAM:   512,
 		DefaultDisk:  4,
@@ -326,7 +326,11 @@ func DeployCatalogItem(conn types.Conn, userUUID, role string, req types.DeployC
 
 	password := req.Password
 	if password == "" {
-		password = "Lab411Admin!"
+		if selectedItem.IsVulnerable {
+			password = "toor"
+		} else {
+			password = "Lab411Admin!"
+		}
 	}
 
 	tagList := []string{"vm-" + vmUUID, "owner-" + userUUID, "container", "lxc"}
