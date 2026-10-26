@@ -439,6 +439,21 @@ func ConnectToLabNetwork(conn types.Conn, userUUID string, vmID string, roles ..
 		return fmt.Errorf("unauthorized: machine %d does not belong to user", id)
 	}
 
+	machineName := ""
+	if !m.IsCT && m.VM != nil {
+		machineName = m.VM.Name
+	} else if m.IsCT && m.CT != nil {
+		machineName = m.CT.Name
+	}
+
+	lower := strings.ToLower(machineName + ";" + m.Tags)
+	keywords := []string{"vulnerable", "vuln", "metasploit", "weblab", "ctf", "dvwa", "juice", "target", "victim", "cve", "php2shell", "kioptrix", "vulnhub"}
+	for _, kw := range keywords {
+		if strings.Contains(lower, kw) {
+			return fmt.Errorf("zranitelné stroje nelze z bezpečnostních důvodů připojit k laboratorní síti (Internetu)")
+		}
+	}
+
 	for nic, val := range m.Nets {
 		if ParseVLAN(val) == 0 {
 			if m.IsCT {

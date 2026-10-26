@@ -481,6 +481,13 @@ func DeployCatalogItem(conn types.Conn, userUUID, role string, req types.DeployC
 			{Name: "vga", Value: "std,clipboard=vnc"},
 		}
 
+		if selectedItem.IsVulnerable {
+			cfgOpts = append(cfgOpts, proxmox.VirtualMachineOption{
+				Name:  "net0",
+				Value: "model=virtio,bridge=vmbr0,tag=4094",
+			})
+		}
+
 		if req.RAM > 0 {
 			cfgOpts = append(cfgOpts, proxmox.VirtualMachineOption{Name: "memory", Value: req.RAM})
 		}
@@ -488,15 +495,23 @@ func DeployCatalogItem(conn types.Conn, userUUID, role string, req types.DeployC
 			cfgOpts = append(cfgOpts, proxmox.VirtualMachineOption{Name: "cores", Value: req.Cores})
 		}
 
-		if req.IsDHCP {
-			cfgOpts = append(cfgOpts, proxmox.VirtualMachineOption{Name: "ipconfig0", Value: "ip=dhcp"})
+		if !selectedItem.IsVulnerable {
+			if req.IsDHCP {
+				cfgOpts = append(cfgOpts, proxmox.VirtualMachineOption{Name: "ipconfig0", Value: "ip=dhcp"})
+			} else if req.IP != "" {
+				ipVal := strings.TrimSpace(req.IP)
+				if !strings.Contains(ipVal, "/") {
+					ipVal += "/24"
+				}
+				if req.Gateway != "" {
+					ipVal += fmt.Sprintf(",gw=%s", strings.TrimSpace(req.Gateway))
+				}
+				cfgOpts = append(cfgOpts, proxmox.VirtualMachineOption{Name: "ipconfig0", Value: fmt.Sprintf("ip=%s", ipVal)})
+			}
 		} else if req.IP != "" {
 			ipVal := strings.TrimSpace(req.IP)
 			if !strings.Contains(ipVal, "/") {
 				ipVal += "/24"
-			}
-			if req.Gateway != "" {
-				ipVal += fmt.Sprintf(",gw=%s", strings.TrimSpace(req.Gateway))
 			}
 			cfgOpts = append(cfgOpts, proxmox.VirtualMachineOption{Name: "ipconfig0", Value: fmt.Sprintf("ip=%s", ipVal)})
 		}
@@ -541,7 +556,17 @@ func DeployCatalogItem(conn types.Conn, userUUID, role string, req types.DeployC
 	}
 
 	var net0Val string
-	if req.IsDHCP {
+	if selectedItem.IsVulnerable {
+		if req.IP != "" {
+			ipVal := strings.TrimSpace(req.IP)
+			if !strings.Contains(ipVal, "/") {
+				ipVal += "/24"
+			}
+			net0Val = fmt.Sprintf("name=eth0,bridge=vmbr0,tag=4094,ip=%s,type=veth", ipVal)
+		} else {
+			net0Val = "name=eth0,bridge=vmbr0,tag=4094,type=veth"
+		}
+	} else if req.IsDHCP {
 		net0Val = "name=eth0,bridge=vmbr0,ip=dhcp,type=veth"
 	} else if req.IP != "" {
 		ipVal := strings.TrimSpace(req.IP)

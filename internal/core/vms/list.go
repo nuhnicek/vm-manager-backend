@@ -45,9 +45,9 @@ func parseIPAndGateway(configStr string) (string, string) {
 	return ip, gw
 }
 
-func isVulnerableTarget(name, tags string) bool {
+func IsVulnerableTarget(name, tags string) bool {
 	lower := strings.ToLower(name + ";" + tags)
-	keywords := []string{"vulnerable", "vuln", "metasploit", "weblab", "ctf", "dvwa", "juice"}
+	keywords := []string{"vulnerable", "vuln", "metasploit", "weblab", "ctf", "dvwa", "juice", "target", "victim", "cve", "php2shell", "kioptrix", "vulnhub"}
 	for _, kw := range keywords {
 		if strings.Contains(lower, kw) {
 			return true
@@ -183,7 +183,7 @@ func List(conn types.Conn, uuid string, roles ...string) ([]types.Vm, error) {
 						runtimeIP = strings.Split(cfgIP, "/")[0]
 					}
 
-					isVuln := isVulnerableTarget(i.Name, i.Tags)
+					isVuln := IsVulnerableTarget(i.Name, i.Tags)
 					category := "Virtual Machine"
 					if isVuln {
 						category = "Vulnerable Target"
@@ -334,7 +334,7 @@ func List(conn types.Conn, uuid string, roles ...string) ([]types.Vm, error) {
 						runtimeIP = strings.Split(cfgIP, "/")[0]
 					}
 
-					isVuln := isVulnerableTarget(ct.Name, ct.Tags)
+					isVuln := IsVulnerableTarget(ct.Name, ct.Tags)
 					category := "LXC Container"
 					if isVuln {
 						category = "Vulnerable Target"

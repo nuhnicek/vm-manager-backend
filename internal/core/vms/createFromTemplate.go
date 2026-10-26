@@ -51,20 +51,31 @@ func CreateFromTemplate(conn types.Conn, ownerUUID string, vmName string, templa
 	if err != nil {
 		return err, "", 0
 	}
-	err = newVM.ConfigSync(ctx,
-		proxmox.VirtualMachineOption{
+	tagValue := "vm-" + vmUuid + ";" + "owner-" + ownerUUID
+	cfgOpts := []proxmox.VirtualMachineOption{
+		{
 			Name:  "tags",
-			Value: "vm-" + vmUuid + ";" + "owner-" + ownerUUID,
+			Value: tagValue,
 		},
-		proxmox.VirtualMachineOption{
+		{
 			Name:  "serial0",
 			Value: "socket",
 		},
-		proxmox.VirtualMachineOption{
+		{
 			Name:  "vga",
 			Value: "std,clipboard=vnc",
 		},
-	)
+	}
+
+	if IsVulnerableTarget(vmName, templateVM.Tags) {
+		cfgOpts[0].Value = tagValue + ";vulnerable;cybersec;ctf"
+		cfgOpts = append(cfgOpts, proxmox.VirtualMachineOption{
+			Name:  "net0",
+			Value: "model=virtio,bridge=vmbr0,tag=4094",
+		})
+	}
+
+	err = newVM.ConfigSync(ctx, cfgOpts...)
 
 	if err != nil {
 		return err, "", 0

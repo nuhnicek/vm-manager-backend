@@ -36,7 +36,7 @@ func ConnectLabNetwork(conn types.Conn) gin.HandlerFunc {
 
 		err := vlan.ConnectToLabNetwork(conn, userUUID, strconv.Itoa(body.VMID), role)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("failed to connect to lab network: %v", err)})
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
 
