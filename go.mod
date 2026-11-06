@@ -5,10 +5,10 @@ go 1.27.1
 require (
 	github.com/gin-gonic/gin v1.12.0
 	github.com/google/uuid v1.6.0
+	github.com/gorilla/websocket v1.4.2
 	github.com/joho/godotenv v1.5.1
 	github.com/luthermonson/go-proxmox v0.8.2
 	github.com/redis/go-redis/v9 v9.23.0
-	go.mongodb.org/mongo-driver v1.17.10
 	go.mongodb.org/mongo-driver/v2 v2.5.0
 )
 
@@ -28,8 +28,6 @@ require (
 	github.com/go-playground/validator/v10 v10.30.1 // indirect
 	github.com/goccy/go-json v0.10.5 // indirect
 	github.com/goccy/go-yaml v1.19.2 // indirect
-	github.com/golang/snappy v0.0.4 // indirect
-	github.com/gorilla/websocket v1.4.2 // indirect
 	github.com/jinzhu/copier v0.3.4 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/klauspost/compress v1.18.5 // indirect

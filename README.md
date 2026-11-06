@@ -61,36 +61,76 @@ flowchart TD
 
 ## API Reference
 
-All `/vms/*` endpoints and `/ping` require the `Authorization` header containing a valid session token obtained from `/auth/login`.
+> [!TIP]
+> **Interactive Swagger UI**: When running the backend server, visit [`http://localhost:8080/docs`](http://localhost:8080/docs) in your browser for the full interactive API documentation.
+>
+> **Full Specifications**:
+> - [Comprehensive API Documentation (Markdown)](docs/API.md)
+> - [OpenAPI 3.0 Specification (YAML)](docs/openapi.yaml) or served at `/openapi.yaml`
+> - [OpenAPI 3.0 Specification (JSON)](docs/openapi.json) or served at `/openapi.json`
 
-| Method | Endpoint | Description | Payload / Parameters |
-|:---|:---|:---|:---|
-| `POST` | `/auth/login` | Authenticate user and receive session token | `{"email": "...", "password": "..."}` |
-| `GET` | `/ping` | Verify session validity | Headers: `Authorization: <token>` |
-| `GET` | `/vms` | List user's VMs with status, RAM, NICs, and links | Query Proxmox node for `owner-<uuid>` |
-| `GET` | `/vms/templates` | List available template VMs | Returns template IDs and names |
-| `POST` | `/vms/create` | Clone a VM from template | `{"name": "my-vm", "template_id": 100}` |
-| `POST` | `/vms/start` | Power on a virtual machine | `{"id": 101}` |
-| `POST` | `/vms/stop` | Power off a virtual machine | `{"id": 101}` |
-| `POST` | `/vms/delete` | Destroy a virtual machine | `{"id": 101}` |
-| `POST` | `/vms/network/add-nic` | Add next available VirtIO NIC (`net0`–`net31`) | `{"vmid": 101}` |
-| `POST` | `/vms/network/remove` | Detach a network interface | `{"vmid": 101, "nic": "net1"}` |
-| `POST` | `/vms/network/create` | Interconnect two VMs via dedicated VLAN | `{"vmid1": 101, "vmid2": 102, "nic1": "net1", "nic2": "net1"}` |
-| `POST` | `/vms/network/disconnect` | Remove link between two VMs | `{"vmid1": 101, "vmid2": 102}` |
-| `WS` | `/vms/console/vnc` | noVNC RFB binary stream proxy | Query params: `?vmid=101&token=<token>` |
-| `WS` | `/vms/console/ws` | xterm.js serial terminal proxy | Query params: `?vmid=101&token=<token>` |
-| `GET` | `/labs/templates` | List all available lab templates | Returns lab catalog |
-| `POST` | `/labs/templates` | Create lab template (Teacher only) | `{"name": "...", "vms": [...], "networks": [...]}` |
-| `DELETE` | `/labs/templates/:id` | Delete lab template (Teacher only) | Template ID in path |
-| `POST` | `/labs/deploy` | Deploy multi-VM lab topology with VLANs | `{"template_id": "...", "student_uuid": "..."}` |
-| `GET` | `/labs/instances` | List active deployed lab instances | Returns user or student lab environments |
-| `POST` | `/labs/instances/:id/start` | Power on all VMs in lab instance | Lab instance ID in path |
-| `POST` | `/labs/instances/:id/stop` | Power off all VMs in lab instance | Lab instance ID in path |
-| `DELETE` | `/labs/instances/:id` | Tear down lab instance and destroy VMs | Lab instance ID in path |
-| `GET` | `/teacher/students` | List student accounts and VM counts | Teacher role required |
-| `POST` | `/teacher/students` | Create student account | `{"email": "...", "password": "..."}` |
-| `GET` | `/teacher/vms` | List all VMs across all students | Teacher role required |
-| `POST` | `/teacher/vms/bulk-action` | Classroom bulk action (e.g. stop all) | `{"action": "stop_all"}` |
+All protected endpoints and `/ping` require the `Authorization` header containing a valid session token obtained from `/auth/login` (or query param `?token=<token>` for WebSocket connections).
+
+| Method | Endpoint | Role | Description | Payload / Parameters |
+|:---|:---|:---|:---|:---|
+| `GET` | `/docs` | Public | Interactive Swagger UI API documentation | Browser view |
+| `GET` | `/openapi.yaml` | Public | OpenAPI 3.0 specification in YAML format | Direct download / import |
+| `GET` | `/openapi.json` | Public | OpenAPI 3.0 specification in JSON format | Direct download / import |
+| `POST` | `/auth/login` | Public | Authenticate user and receive session token | `{"email": "...", "password": "..."}` |
+| `GET` | `/ping` | Auth | Verify session validity and user profile | Headers: `Authorization: <token>` |
+| `GET` | `/nodes` | Teacher | List cluster nodes and basic telemetry | Returns node list |
+| `GET` | `/vms` | Auth | List user's VMs with status, RAM, NICs, and links | Query Proxmox node for `owner-<uuid>` |
+| `GET` | `/vms/templates` | Auth | List available template VMs | Returns template IDs and names |
+| `POST` | `/vms/create` | Auth | Clone a VM from template | `{"name": "my-vm", "template_id": 100}` |
+| `POST` | `/vms/start` | Auth | Power on a virtual machine | `{"id": 101}` |
+| `POST` | `/vms/stop` | Auth | Power off a virtual machine | `{"id": 101}` |
+| `POST` | `/vms/delete` | Auth | Destroy a virtual machine | `{"id": 101}` |
+| `POST` | `/vms/ip` | Auth | Configure static IP/gateway or DHCP | `{"vmid": 101, "ip": "192.168.10.5/24"}` |
+| `POST` | `/vms/network/add-nic` | Auth | Add next available VirtIO NIC (`net0`–`net31`) | `{"vmid": 101}` |
+| `POST` | `/vms/network/remove` | Auth | Detach a network interface | `{"vmid": 101, "nic": "net1"}` |
+| `POST` | `/vms/network/delete` | Auth | Detach a network interface (alias) | `{"vmid": 101, "nic": "net1"}` |
+| `POST` | `/vms/network/create` | Auth | Interconnect two VMs via dedicated VLAN | `{"vmid1": 101, "vmid2": 102, "nic1": "net1", "nic2": "net1"}` |
+| `POST` | `/vms/network/disconnect` | Auth | Remove link between two VMs | `{"vmid1": 101, "vmid2": 102}` |
+| `POST` | `/vms/network/lab-connect` | Auth | Connect VM to shared lab network | `{"vmid": 101}` |
+| `POST` | `/vms/network/lab-disconnect` | Auth | Disconnect VM from shared lab network | `{"vmid": 101}` |
+| `WS` | `/vms/console/vnc` | Auth | noVNC RFB binary stream proxy | Query params: `?vmid=101&token=<token>` |
+| `WS` | `/vms/console/ws` | Auth | xterm.js serial terminal proxy | Query params: `?vmid=101&token=<token>` |
+| `POST` | `/vms/console/external` | Auth | Start external TCP VNC proxy listener | `{"vmid": 101}` |
+| `GET` | `/vms/console/external/file` | Auth | Download `.vnc` connection profile | Query params: `?vmid=101` |
+| `DELETE` | `/vms/console/external/:vmid` | Auth | Stop external TCP VNC proxy listener | VMID in path |
+| `GET` | `/vms/console/clipboard` | Auth | Read guest OS clipboard via QEMU agent | Query params: `?vmid=101` |
+| `POST` | `/vms/console/clipboard` | Auth | Set guest OS clipboard via QEMU agent | `{"vmid": 101, "text": "..."}` |
+| `GET` | `/catalog` | Auth | List pre-configured appliances & CVE targets | Returns catalog appliances |
+| `POST` | `/catalog/deploy` | Auth | Deploy appliance from catalog | `{"catalog_id": "...", "name": "..."}` |
+| `GET` | `/projects` | Auth | List user projects | Returns project list |
+| `POST` | `/projects` | Auth | Create project workspace | `{"name": "...", "description": "..."}` |
+| `PUT` | `/projects/:id` | Auth | Update project details | Project ID in path |
+| `DELETE` | `/projects/:id` | Auth | Delete project | Project ID in path |
+| `POST` | `/projects/:id/vms` | Auth | Add VM(s) to project | `{"vm_id": 101}` or `{"vm_ids": [...]}` |
+| `DELETE` | `/projects/:id/vms/:vmid` | Auth | Remove VM from project | Project ID and VMID in path |
+| `POST` | `/vms/:id/project` | Auth | Assign VM to project | VMID in path, `{"project_id": "..."}` |
+| `GET` | `/labs/templates` | Auth | List all available lab templates | Returns lab catalog |
+| `GET` | `/labs/templates/:id` | Auth | Get specific lab template details | Template ID in path |
+| `POST` | `/labs/templates` | Teacher | Create lab template | `{"name": "...", "vms": [...], "networks": [...]}` |
+| `PUT` | `/labs/templates/:id` | Teacher | Update lab template | Template ID in path |
+| `DELETE` | `/labs/templates/:id` | Teacher | Delete lab template | Template ID in path |
+| `POST` | `/labs/deploy` | Auth | Deploy multi-VM lab topology with VLANs | `{"template_id": "...", "student_uuid": "..."}` |
+| `GET` | `/labs/instances` | Auth | List active deployed lab instances | Returns user or student lab environments |
+| `POST` | `/labs/instances/:id/start` | Auth | Power on all VMs in lab instance | Lab instance ID in path |
+| `POST` | `/labs/instances/:id/stop` | Auth | Power off all VMs in lab instance | Lab instance ID in path |
+| `DELETE` | `/labs/instances/:id` | Auth | Tear down lab instance and destroy VMs | Lab instance ID in path |
+| `GET` | `/teacher/students` | Teacher | List student accounts and VM counts | Returns student list with metrics |
+| `POST` | `/teacher/students` | Teacher | Create student or teacher account | `{"email": "...", "password": "...", "role": "..."}` |
+| `DELETE` | `/teacher/students/:id` | Teacher | Delete student account | Student UUID in path |
+| `POST` | `/teacher/students/:id/reset-password` | Teacher | Reset student account password | `{"password": "..."}` |
+| `GET` | `/teacher/vms` | Teacher | List all VMs across all students | Full cluster VM list |
+| `POST` | `/teacher/vms/bulk-action` | Teacher | Classroom bulk action (e.g. stop all) | `{"action": "stop_all"}` |
+| `POST` | `/vms/templates/convert` | Teacher | Convert VM to template | `{"vmid": 101}` |
+| `POST` | `/vms/templates/clone-as-template` | Teacher | Clone VM and convert clone into template | `{"source_vmid": 101, "template_name": "..."}` |
+| `GET` | `/teacher/nodes` | Teacher | Node telemetry from balancing pool | Returns load balancer status |
+| `POST` | `/teacher/nodes` | Teacher | Register standalone node into balancing pool | `{"name": "...", "host_uri": "...", ...}` |
+| `DELETE` | `/teacher/nodes/:id` | Teacher | Remove node from balancing pool | Node ID in path |
+| `POST` | `/teacher/nodes/refresh` | Teacher | Refresh telemetry across cluster nodes | Triggers immediate metric poll |
 
 ---
 

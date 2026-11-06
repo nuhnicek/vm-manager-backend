@@ -396,6 +396,15 @@ func DeployCatalogItem(conn types.Conn, userUUID, role string, req types.DeployC
 	}
 
 	targetNode := req.TargetNode
+	if targetNode == "" && conn.NodePool != nil {
+		_, _, selectedNodeName, selectErr := conn.NodePool.SelectNode(ctx, types.NodePlacementRequest{
+			RequiredTemplateID: selectedItem.TemplateID,
+			RequiredRAMMB:      req.RAM,
+		})
+		if selectErr == nil && selectedNodeName != "" {
+			targetNode = selectedNodeName
+		}
+	}
 	if targetNode == "" {
 		pool := conn.GetPool()
 		if len(pool) > 0 {
@@ -439,9 +448,12 @@ func DeployCatalogItem(conn types.Conn, userUUID, role string, req types.DeployC
 	vmUUID := uuid.New().String()
 
 	if selectedItem.Type == "qemu" {
-		tmpl, tmplClient, err := conn.FindTemplate(ctx, selectedItem.TemplateID)
+		tmpl, tmplClient, err := conn.FindTemplate(ctx, selectedItem.TemplateID, targetNode)
 		if err != nil || tmpl == nil {
-			return nil, fmt.Errorf("šablona %d nebyla nalezena", selectedItem.TemplateID)
+			tmpl, tmplClient, err = conn.FindTemplate(ctx, selectedItem.TemplateID)
+			if err != nil || tmpl == nil {
+				return nil, fmt.Errorf("šablona %d nebyla nalezena", selectedItem.TemplateID)
+			}
 		}
 
 		cloneNode, err := tmplClient.Client.Node(ctx, tmplClient.NodeName)
@@ -449,11 +461,16 @@ func DeployCatalogItem(conn types.Conn, userUUID, role string, req types.DeployC
 			return nil, fmt.Errorf("nepodařilo se získat uzel pro klonování: %w", err)
 		}
 
+		cloneTarget := ""
+		if tmplClient.NodeName != targetNode {
+			cloneTarget = targetNode
+		}
+
 		clonedID, task, err := tmpl.Clone(ctx, &proxmox.VirtualMachineCloneOptions{
 			NewID:  newVMID,
 			Name:   name,
 			Full:   proxmox.IntOrBool(true),
-			Target: targetNode,
+			Target: cloneTarget,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("klonování šablony selhalo: %w", err)

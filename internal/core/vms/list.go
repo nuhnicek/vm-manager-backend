@@ -3,11 +3,15 @@ package vms
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 	"vm-manager-backend/internal/core/projects"
 	"vm-manager-backend/types"
+
+	"github.com/luthermonson/go-proxmox"
 )
 
 type vmNetEndpoint struct {
@@ -78,6 +82,7 @@ func List(conn types.Conn, uuid string, roles ...string) ([]types.Vm, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
 	defer cancel()
 
+	var mu sync.Mutex
 	type rawVMData struct {
 		vm      types.Vm
 		nicTags map[string]int
@@ -89,18 +94,23 @@ func List(conn types.Conn, uuid string, roles ...string) ([]types.Vm, error) {
 	projectsMap, _ := projects.GetVMProjectsMap(conn, uuid, role == "teacher" || role == "admin")
 
 	pool := conn.GetPool()
+	sem := make(chan struct{}, 12)
+	var wg sync.WaitGroup
+
 	for _, nc := range pool {
-		node, err := nc.Client.Node(ctx, nc.NodeName)
+		nodeClient := nc
+		node, err := nodeClient.Client.Node(ctx, nodeClient.NodeName)
 		if err != nil {
 			continue
 		}
 
 		vms, err := node.VirtualMachines(ctx)
 		if err == nil {
-			for _, i := range vms {
-				if i.Template {
+			for _, item := range vms {
+				if item.Template {
 					continue
 				}
+				i := item
 				var ownerUUID, vmUUID string
 
 				tags := strings.Split(i.Tags, ";")
@@ -114,144 +124,155 @@ func List(conn types.Conn, uuid string, roles ...string) ([]types.Vm, error) {
 				}
 
 				if role == "teacher" || role == "admin" || ownerUUID == uuid {
-					networks := make([]string, 0)
-					availableNICs := make([]string, 0)
-					nicTags := make(map[string]int)
-					hasInternet := false
-					isAttacker := isAttackerMachine(i.Name, i.Tags)
+					wg.Add(1)
+					sem <- struct{}{}
+					go func(res *proxmox.VirtualMachine, n *proxmox.Node, nc types.ProxmoxNodeClient, owner, vmuuid string) {
+						defer wg.Done()
+						defer func() { <-sem }()
 
-					status := "Stopped"
-					if strings.EqualFold(i.Status, "running") {
-						status = "Running"
-					}
+						networks := make([]string, 0)
+						availableNICs := make([]string, 0)
+						nicTags := make(map[string]int)
+						hasInternet := false
+						isAttacker := isAttackerMachine(res.Name, res.Tags)
 
-					ramMB := int(i.MaxMem / (1024 * 1024))
-					fullVM, err := node.VirtualMachine(ctx, int(i.VMID))
-
-					var cfgIP, cfgGW, runtimeIP string
-					if err == nil && fullVM != nil && fullVM.VirtualMachineConfig != nil {
-						if fullVM.VirtualMachineConfig.Memory > 0 {
-							ramMB = int(fullVM.VirtualMachineConfig.Memory)
+						status := "Stopped"
+						if strings.EqualFold(res.Status, "running") {
+							status = "Running"
 						}
-						if fullVM.VirtualMachineConfig.IPConfigs != nil {
-							if ipVal, exists := fullVM.VirtualMachineConfig.IPConfigs["ipconfig0"]; exists {
-								cfgIP, cfgGW = parseIPAndGateway(ipVal)
+
+						ramMB := int(res.MaxMem / (1024 * 1024))
+						fullVM, vmErr := n.VirtualMachine(ctx, int(res.VMID))
+
+						var cfgIP, cfgGW, runtimeIP string
+						if vmErr == nil && fullVM != nil && fullVM.VirtualMachineConfig != nil {
+							if fullVM.VirtualMachineConfig.Memory > 0 {
+								ramMB = int(fullVM.VirtualMachineConfig.Memory)
 							}
-						}
-						if fullVM.VirtualMachineConfig.Nets != nil {
-							for j := 0; j <= 31; j++ {
-								netKey := fmt.Sprintf("net%d", j)
-								if netVal, exists := fullVM.VirtualMachineConfig.Nets[netKey]; exists {
-									networks = append(networks, fmt.Sprintf("%s: %s", netKey, netVal))
-									availableNICs = append(availableNICs, netKey)
-									tag := parseVLAN(netVal)
-									if tag > 0 && tag != 4094 {
-										nicTags[netKey] = tag
-										tagMap[tag] = append(tagMap[tag], vmNetEndpoint{
-											vmID: fmt.Sprint(i.VMID),
-											nic:  netKey,
-										})
-									} else if tag == 0 {
-										hasInternet = true
-									}
+							if fullVM.VirtualMachineConfig.IPConfigs != nil {
+								if ipVal, exists := fullVM.VirtualMachineConfig.IPConfigs["ipconfig0"]; exists {
+									cfgIP, cfgGW = parseIPAndGateway(ipVal)
 								}
 							}
-						}
-					}
-
-					if status == "Running" && fullVM != nil {
-						agentCtx, agentCancel := context.WithTimeout(ctx, 600*time.Millisecond)
-						if ifaces, err := fullVM.AgentGetNetworkIFaces(agentCtx); err == nil && ifaces != nil {
-							for _, iface := range ifaces {
-								if iface.Name != "lo" {
-									for _, ipInfo := range iface.IPAddresses {
-										if ipInfo.IPAddressType == "ipv4" && ipInfo.IPAddress != "127.0.0.1" {
-											runtimeIP = ipInfo.IPAddress
-											break
+							if fullVM.VirtualMachineConfig.Nets != nil {
+								for j := 0; j <= 31; j++ {
+									netKey := fmt.Sprintf("net%d", j)
+									if netVal, exists := fullVM.VirtualMachineConfig.Nets[netKey]; exists {
+										networks = append(networks, fmt.Sprintf("%s: %s", netKey, netVal))
+										availableNICs = append(availableNICs, netKey)
+										tag := parseVLAN(netVal)
+										if tag > 0 && tag != 4094 {
+											nicTags[netKey] = tag
+										} else if tag == 0 {
+											hasInternet = true
 										}
 									}
 								}
-								if runtimeIP != "" {
-									break
-								}
 							}
 						}
-						agentCancel()
-					}
 
-					if runtimeIP == "" && cfgIP != "" && !strings.EqualFold(cfgIP, "dhcp") {
-						runtimeIP = strings.Split(cfgIP, "/")[0]
-					}
-
-					isVuln := IsVulnerableTarget(i.Name, i.Tags)
-					category := "Virtual Machine"
-					if isVuln {
-						category = "Vulnerable Target"
-					}
-
-					var cveID, cvss, exploitHint, exploitDoc string
-					var port int
-					if catItem := MatchCatalogItem(i.Name, i.Tags); catItem != nil {
-						isVuln = true
-						category = catItem.Category
-						cveID = catItem.CVEID
-						cvss = catItem.CVSS
-						port = catItem.Port
-						targetIP := runtimeIP
-						if targetIP == "" {
-							targetIP = "<IP>"
+						if status == "Running" && fullVM != nil {
+							agentCtx, agentCancel := context.WithTimeout(ctx, 600*time.Millisecond)
+							if ifaces, aErr := fullVM.AgentGetNetworkIFaces(agentCtx); aErr == nil && ifaces != nil {
+								for _, iface := range ifaces {
+									if iface.Name != "lo" {
+										for _, ipInfo := range iface.IPAddresses {
+											if ipInfo.IPAddressType == "ipv4" && ipInfo.IPAddress != "127.0.0.1" {
+												runtimeIP = ipInfo.IPAddress
+												break
+											}
+										}
+									}
+									if runtimeIP != "" {
+										break
+									}
+								}
+							}
+							agentCancel()
 						}
-						exploitHint = strings.ReplaceAll(catItem.ExploitHint, "{IP}", targetIP)
-						exploitDoc = catItem.ExploitDoc
-					}
 
-					nodeName := nc.NodeName
-					if role != "teacher" && role != "admin" {
-						nodeName = ""
-					}
+						if runtimeIP == "" && cfgIP != "" && !strings.EqualFold(cfgIP, "dhcp") {
+							runtimeIP = strings.Split(cfgIP, "/")[0]
+						}
 
-					projID := ""
-					projName := ""
-					projColor := ""
-					if p, exists := projectsMap[int(i.VMID)]; exists {
-						projID = p.ID
-						projName = p.Name
-						projColor = p.Color
-					}
+						isVuln := IsVulnerableTarget(res.Name, res.Tags)
+						category := "Virtual Machine"
+						if isVuln {
+							category = "Vulnerable Target"
+						}
 
-					vm := types.Vm{
-						Id:            i.VMID,
-						Name:          i.Name,
-						UUID:          vmUUID,
-						Type:          "qemu",
-						Status:        status,
-						RAM:           ramMB,
-						Node:          nodeName,
-						Owner:         ownerUUID,
-						IPAddress:     runtimeIP,
-						ConfiguredIP:  cfgIP,
-						Gateway:       cfgGW,
-						IsVulnerable:  isVuln,
-						Category:      category,
-						CVEID:         cveID,
-						CVSS:          cvss,
-						Port:          port,
-						ExploitHint:   exploitHint,
-						ExploitDoc:    exploitDoc,
-						ProjectID:     projID,
-						ProjectName:   projName,
-						ProjectColor:  projColor,
-						Networks:      networks,
-						AvailableNICs: availableNICs,
-						Connections:   make([]types.VMConnection, 0),
-						HasInternet:   hasInternet,
-						IsAttacker:    isAttacker,
-					}
+						var cveID, cvss, exploitHint, exploitDoc string
+						var port int
+						if catItem := MatchCatalogItem(res.Name, res.Tags); catItem != nil {
+							isVuln = true
+							category = catItem.Category
+							cveID = catItem.CVEID
+							cvss = catItem.CVSS
+							port = catItem.Port
+							targetIP := runtimeIP
+							if targetIP == "" {
+								targetIP = "<IP>"
+							}
+							exploitHint = strings.ReplaceAll(catItem.ExploitHint, "{IP}", targetIP)
+							exploitDoc = catItem.ExploitDoc
+						}
 
-					rawList = append(rawList, rawVMData{
-						vm:      vm,
-						nicTags: nicTags,
-					})
+						nodeName := nc.NodeName
+						if role != "teacher" && role != "admin" {
+							nodeName = ""
+						}
+
+						projID := ""
+						projName := ""
+						projColor := ""
+						if p, exists := projectsMap[int(res.VMID)]; exists {
+							projID = p.ID
+							projName = p.Name
+							projColor = p.Color
+						}
+
+						vm := types.Vm{
+							Id:            proxmox.StringOrUint64(res.VMID),
+							Name:          res.Name,
+							UUID:          vmuuid,
+							Type:          "qemu",
+							Status:        status,
+							RAM:           ramMB,
+							Node:          nodeName,
+							Owner:         owner,
+							IPAddress:     runtimeIP,
+							ConfiguredIP:  cfgIP,
+							Gateway:       cfgGW,
+							IsVulnerable:  isVuln,
+							Category:      category,
+							CVEID:         cveID,
+							CVSS:          cvss,
+							Port:          port,
+							ExploitHint:   exploitHint,
+							ExploitDoc:    exploitDoc,
+							ProjectID:     projID,
+							ProjectName:   projName,
+							ProjectColor:  projColor,
+							Networks:      networks,
+							AvailableNICs: availableNICs,
+							Connections:   make([]types.VMConnection, 0),
+							HasInternet:   hasInternet,
+							IsAttacker:    isAttacker,
+						}
+
+						mu.Lock()
+						for nicKey, tag := range nicTags {
+							tagMap[tag] = append(tagMap[tag], vmNetEndpoint{
+								vmID: fmt.Sprint(res.VMID),
+								nic:  nicKey,
+							})
+						}
+						rawList = append(rawList, rawVMData{
+							vm:      vm,
+							nicTags: nicTags,
+						})
+						mu.Unlock()
+					}(i, node, nodeClient, ownerUUID, vmUUID)
 				}
 			}
 		}
@@ -259,9 +280,10 @@ func List(conn types.Conn, uuid string, roles ...string) ([]types.Vm, error) {
 		cts, err := node.Containers(ctx)
 		if err == nil {
 			for _, ct := range cts {
+				item := ct
 				var ownerUUID, vmUUID string
 
-				tags := strings.Split(ct.Tags, ";")
+				tags := strings.Split(item.Tags, ";")
 				for _, tag := range tags {
 					trimmed := strings.TrimSpace(tag)
 					if strings.HasPrefix(trimmed, "owner-") {
@@ -272,141 +294,153 @@ func List(conn types.Conn, uuid string, roles ...string) ([]types.Vm, error) {
 				}
 
 				if role == "teacher" || role == "admin" || ownerUUID == uuid {
-					networks := make([]string, 0)
-					availableNICs := make([]string, 0)
-					nicTags := make(map[string]int)
-					hasInternet := false
-					isAttacker := isAttackerMachine(ct.Name, ct.Tags)
+					wg.Add(1)
+					sem <- struct{}{}
+					go func(res *proxmox.Container, n *proxmox.Node, nc types.ProxmoxNodeClient, owner, vmuuid string) {
+						defer wg.Done()
+						defer func() { <-sem }()
 
-					status := "Stopped"
-					if strings.EqualFold(ct.Status, "running") {
-						status = "Running"
-					}
+						networks := make([]string, 0)
+						availableNICs := make([]string, 0)
+						nicTags := make(map[string]int)
+						hasInternet := false
+						isAttacker := isAttackerMachine(res.Name, res.Tags)
 
-					ramMB := int(ct.MaxMem / (1024 * 1024))
-					fullCT, err := node.Container(ctx, int(ct.VMID))
+						status := "Stopped"
+						if strings.EqualFold(res.Status, "running") {
+							status = "Running"
+						}
 
-					var cfgIP, cfgGW, runtimeIP string
-					if err == nil && fullCT != nil {
-						if fullCT.ContainerConfig != nil {
-							if fullCT.ContainerConfig.Memory != nil && *fullCT.ContainerConfig.Memory > 0 {
-								ramMB = *fullCT.ContainerConfig.Memory
-							}
-							if fullCT.ContainerConfig.Nets != nil {
-								for j := 0; j <= 31; j++ {
-									netKey := fmt.Sprintf("net%d", j)
-									if netVal, exists := fullCT.ContainerConfig.Nets[netKey]; exists {
-										networks = append(networks, fmt.Sprintf("%s: %s", netKey, netVal))
-										availableNICs = append(availableNICs, netKey)
-										tag := parseVLAN(netVal)
-										if tag > 0 && tag != 4094 {
-											nicTags[netKey] = tag
-											tagMap[tag] = append(tagMap[tag], vmNetEndpoint{
-												vmID: fmt.Sprint(ct.VMID),
-												nic:  netKey,
-											})
-										} else if tag == 0 {
-											hasInternet = true
-										}
-										if netKey == "net0" {
-											cfgIP, cfgGW = parseIPAndGateway(netVal)
+						ramMB := int(res.MaxMem / (1024 * 1024))
+						fullCT, ctErr := n.Container(ctx, int(res.VMID))
+
+						var cfgIP, cfgGW, runtimeIP string
+						if ctErr == nil && fullCT != nil {
+							if fullCT.ContainerConfig != nil {
+								if fullCT.ContainerConfig.Memory != nil && *fullCT.ContainerConfig.Memory > 0 {
+									ramMB = *fullCT.ContainerConfig.Memory
+								}
+								if fullCT.ContainerConfig.Nets != nil {
+									for j := 0; j <= 31; j++ {
+										netKey := fmt.Sprintf("net%d", j)
+										if netVal, exists := fullCT.ContainerConfig.Nets[netKey]; exists {
+											networks = append(networks, fmt.Sprintf("%s: %s", netKey, netVal))
+											availableNICs = append(availableNICs, netKey)
+											tag := parseVLAN(netVal)
+											if tag > 0 && tag != 4094 {
+												nicTags[netKey] = tag
+											} else if tag == 0 {
+												hasInternet = true
+											}
+											if netKey == "net0" {
+												cfgIP, cfgGW = parseIPAndGateway(netVal)
+											}
 										}
 									}
 								}
 							}
-						}
 
-						if status == "Running" {
-							ctCtx, ctCancel := context.WithTimeout(ctx, 1*time.Second)
-							if ifaces, err := fullCT.Interfaces(ctCtx); err == nil && ifaces != nil {
-								for _, iface := range ifaces {
-									if iface.Name != "lo" && iface.Inet != "" {
-										runtimeIP = strings.Split(iface.Inet, "/")[0]
-										break
+							if status == "Running" {
+								ctCtx, ctCancel := context.WithTimeout(ctx, 1*time.Second)
+								if ifaces, iErr := fullCT.Interfaces(ctCtx); iErr == nil && ifaces != nil {
+									for _, iface := range ifaces {
+										if iface.Name != "lo" && iface.Inet != "" {
+											runtimeIP = strings.Split(iface.Inet, "/")[0]
+											break
+										}
 									}
 								}
+								ctCancel()
 							}
-							ctCancel()
 						}
-					}
 
-					if runtimeIP == "" && cfgIP != "" && !strings.EqualFold(cfgIP, "dhcp") {
-						runtimeIP = strings.Split(cfgIP, "/")[0]
-					}
-
-					isVuln := IsVulnerableTarget(ct.Name, ct.Tags)
-					category := "LXC Container"
-					if isVuln {
-						category = "Vulnerable Target"
-					}
-
-					var cveID, cvss, exploitHint, exploitDoc string
-					var port int
-					if catItem := MatchCatalogItem(ct.Name, ct.Tags); catItem != nil {
-						isVuln = true
-						category = catItem.Category
-						cveID = catItem.CVEID
-						cvss = catItem.CVSS
-						port = catItem.Port
-						targetIP := runtimeIP
-						if targetIP == "" {
-							targetIP = "<IP>"
+						if runtimeIP == "" && cfgIP != "" && !strings.EqualFold(cfgIP, "dhcp") {
+							runtimeIP = strings.Split(cfgIP, "/")[0]
 						}
-						exploitHint = strings.ReplaceAll(catItem.ExploitHint, "{IP}", targetIP)
-						exploitDoc = catItem.ExploitDoc
-					}
 
-					nodeName := nc.NodeName
-					if role != "teacher" && role != "admin" {
-						nodeName = ""
-					}
+						isVuln := IsVulnerableTarget(res.Name, res.Tags)
+						category := "LXC Container"
+						if isVuln {
+							category = "Vulnerable Target"
+						}
 
-					projID := ""
-					projName := ""
-					projColor := ""
-					if p, exists := projectsMap[int(ct.VMID)]; exists {
-						projID = p.ID
-						projName = p.Name
-						projColor = p.Color
-					}
+						var cveID, cvss, exploitHint, exploitDoc string
+						var port int
+						if catItem := MatchCatalogItem(res.Name, res.Tags); catItem != nil {
+							isVuln = true
+							category = catItem.Category
+							cveID = catItem.CVEID
+							cvss = catItem.CVSS
+							port = catItem.Port
+							targetIP := runtimeIP
+							if targetIP == "" {
+								targetIP = "<IP>"
+							}
+							exploitHint = strings.ReplaceAll(catItem.ExploitHint, "{IP}", targetIP)
+							exploitDoc = catItem.ExploitDoc
+						}
 
-					vm := types.Vm{
-						Id:            ct.VMID,
-						Name:          ct.Name,
-						UUID:          vmUUID,
-						Type:          "lxc",
-						Status:        status,
-						RAM:           ramMB,
-						Node:          nodeName,
-						Owner:         ownerUUID,
-						IPAddress:     runtimeIP,
-						ConfiguredIP:  cfgIP,
-						Gateway:       cfgGW,
-						IsVulnerable:  isVuln,
-						Category:      category,
-						CVEID:         cveID,
-						CVSS:          cvss,
-						Port:          port,
-						ExploitHint:   exploitHint,
-						ExploitDoc:    exploitDoc,
-						ProjectID:     projID,
-						ProjectName:   projName,
-						ProjectColor:  projColor,
-						Networks:      networks,
-						AvailableNICs: availableNICs,
-						Connections:   make([]types.VMConnection, 0),
-						HasInternet:   hasInternet,
-						IsAttacker:    isAttacker,
-					}
+						nodeName := nc.NodeName
+						if role != "teacher" && role != "admin" {
+							nodeName = ""
+						}
 
-					rawList = append(rawList, rawVMData{
-						vm:      vm,
-						nicTags: nicTags,
-					})
+						projID := ""
+						projName := ""
+						projColor := ""
+						if p, exists := projectsMap[int(res.VMID)]; exists {
+							projID = p.ID
+							projName = p.Name
+							projColor = p.Color
+						}
+
+						vm := types.Vm{
+							Id:            proxmox.StringOrUint64(res.VMID),
+							Name:          res.Name,
+							UUID:          vmuuid,
+							Type:          "lxc",
+							Status:        status,
+							RAM:           ramMB,
+							Node:          nodeName,
+							Owner:         owner,
+							IPAddress:     runtimeIP,
+							ConfiguredIP:  cfgIP,
+							Gateway:       cfgGW,
+							IsVulnerable:  isVuln,
+							Category:      category,
+							CVEID:         cveID,
+							CVSS:          cvss,
+							Port:          port,
+							ExploitHint:   exploitHint,
+							ExploitDoc:    exploitDoc,
+							ProjectID:     projID,
+							ProjectName:   projName,
+							ProjectColor:  projColor,
+							Networks:      networks,
+							AvailableNICs: availableNICs,
+							Connections:   make([]types.VMConnection, 0),
+							HasInternet:   hasInternet,
+							IsAttacker:    isAttacker,
+						}
+
+						mu.Lock()
+						for nicKey, tag := range nicTags {
+							tagMap[tag] = append(tagMap[tag], vmNetEndpoint{
+								vmID: fmt.Sprint(res.VMID),
+								nic:  nicKey,
+							})
+						}
+						rawList = append(rawList, rawVMData{
+							vm:      vm,
+							nicTags: nicTags,
+						})
+						mu.Unlock()
+					}(item, node, nodeClient, ownerUUID, vmUUID)
 				}
 			}
 		}
 	}
+	wg.Wait()
 
 	var machines []types.Vm
 	for _, item := range rawList {
@@ -429,6 +463,10 @@ func List(conn types.Conn, uuid string, roles ...string) ([]types.Vm, error) {
 	if machines == nil {
 		machines = make([]types.Vm, 0)
 	}
+
+	sort.Slice(machines, func(i, j int) bool {
+		return machines[i].Id < machines[j].Id
+	})
 
 	return machines, nil
 }

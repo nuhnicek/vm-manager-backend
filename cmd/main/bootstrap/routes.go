@@ -32,6 +32,12 @@ func CORSMiddleware() gin.HandlerFunc {
 
 func RegisterRouter(router *gin.Engine, conn types.Conn) {
 	router.Use(CORSMiddleware())
+
+	// API Documentation & OpenAPI Specification
+	router.GET("/docs", handlers.ServeSwaggerUI())
+	router.GET("/openapi.yaml", handlers.ServeOpenAPIYAML())
+	router.GET("/openapi.json", handlers.ServeOpenAPIJSON())
+
 	router.GET("/ping", middleware.Auth(conn), handlers.Main(conn))
 	router.POST("/auth/login", auth.Login(conn))
 	router.GET("/nodes", middleware.Auth(conn), vms.ListNodes(conn))

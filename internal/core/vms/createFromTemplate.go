@@ -14,10 +14,36 @@ func CreateFromTemplate(conn types.Conn, ownerUUID string, vmName string, templa
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 
-	templateVM, nodeClient, err := conn.FindTemplate(ctx, templateID, targetNodes...)
-	if err != nil {
-		return err, "", 0
+	targetNode := ""
+	if len(targetNodes) > 0 && targetNodes[0] != "" {
+		targetNode = targetNodes[0]
 	}
+
+	if targetNode == "" && conn.NodePool != nil {
+		_, _, selectedNodeName, selectErr := conn.NodePool.SelectNode(ctx, types.NodePlacementRequest{
+			RequiredTemplateID: templateID,
+		})
+		if selectErr == nil && selectedNodeName != "" {
+			targetNode = selectedNodeName
+		}
+	}
+
+	var templateVM *proxmox.VirtualMachine
+	var nodeClient *types.ProxmoxNodeClient
+	var err error
+
+	if targetNode != "" {
+		templateVM, nodeClient, err = conn.FindTemplate(ctx, templateID, targetNode)
+		if err != nil {
+			return fmt.Errorf("šablona %d nebyla nalezena na uzlu '%s': %w", templateID, targetNode, err), "", 0
+		}
+	} else {
+		templateVM, nodeClient, err = conn.FindTemplate(ctx, templateID)
+		if err != nil {
+			return fmt.Errorf("šablona %d nebyla nalezena v poolu: %w", templateID, err), "", 0
+		}
+	}
+
 	if !templateVM.Template {
 		return fmt.Errorf("VM %d is not a template", templateID), "", 0
 	}

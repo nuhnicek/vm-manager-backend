@@ -1,0 +1,4029 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Lab411 VM Manager API",
+    "description": "Orchestration engine and API gateway for the **Lab411** virtual laboratory system.\nBuilt in Go with Gin, interfacing directly with Proxmox VE clusters to manage multi-tenant virtual machines,\ndynamically provision isolated 802.1Q VLAN networks, provide remote serial/VNC console streams,\nand manage cyber security lab topologies and student workspaces.\n",
+    "version": "1.0.0",
+    "contact": {
+      "name": "Lab411 Development Team"
+    }
+  },
+  "servers": [
+    {
+      "url": "http://localhost:8080",
+      "description": "Local development server"
+    },
+    {
+      "url": "/",
+      "description": "Current host"
+    }
+  ],
+  "paths": {
+    "/ping": {
+      "get": {
+        "summary": "Verify session validity",
+        "description": "Returns information about the currently authenticated session and user.",
+        "tags": [
+          "System"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "QueryTokenAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Session is valid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PingResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized - missing or expired token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/login": {
+      "post": {
+        "summary": "Authenticate user",
+        "description": "Validates user credentials against MongoDB (SHA-256 hashed password) and creates an ephemeral 1-hour session token in Redis.",
+        "tags": [
+          "Authentication"
+        ],
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UserLoginRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Authentication successful",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LoginResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request payload or missing credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid username or password",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/nodes": {
+      "get": {
+        "summary": "List cluster nodes",
+        "description": "Returns status and capacity metrics of Proxmox cluster nodes. Available to teachers and admins (students receive an empty list).",
+        "tags": [
+          "Cluster & Nodes"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "QueryTokenAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of Proxmox nodes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ProxmoxNodeInfo"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/vms": {
+      "get": {
+        "summary": "List virtual machines",
+        "description": "Returns virtual machines. For students, only returns VMs owned by their tenant UUID. For teachers and admins, returns all VMs in the cluster.",
+        "tags": [
+          "Virtual Machines"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "QueryTokenAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of virtual machines",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/VM"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Internal server error querying Proxmox"
+          }
+        }
+      }
+    },
+    "/vms/templates": {
+      "get": {
+        "summary": "List template VMs",
+        "description": "Lists all available base VM templates across the Proxmox cluster suitable for cloning.",
+        "tags": [
+          "Virtual Machines"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "QueryTokenAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of templates",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/VM"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/vms/create": {
+      "post": {
+        "summary": "Clone a VM from template",
+        "description": "Provisions a new VM via linked cloning from an existing template. Configures serial socket and tags VM with owner UUID.",
+        "tags": [
+          "Virtual Machines"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "QueryTokenAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateVMRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "VM created successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateVMResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request body or template ID",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Proxmox clone failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/vms/start": {
+      "post": {
+        "summary": "Power on a virtual machine",
+        "description": "Starts the virtual machine with the given VMID. Verifies tenant ownership.",
+        "tags": [
+          "Virtual Machines"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "QueryTokenAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VMActionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "VM started successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VMActionResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request body"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Failed to start VM",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/vms/stop": {
+      "post": {
+        "summary": "Power off a virtual machine",
+        "description": "Stops the virtual machine with the given VMID. Verifies tenant ownership.",
+        "tags": [
+          "Virtual Machines"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "QueryTokenAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VMActionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "VM stopped successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VMActionResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request body"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Failed to stop VM",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/vms/delete": {
+      "post": {
+        "summary": "Destroy a virtual machine",
+        "description": "Permanently destroys a virtual machine and disassociates it from all projects.",
+        "tags": [
+          "Virtual Machines"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "QueryTokenAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VMActionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "VM deleted successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VMActionResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request body"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Failed to delete VM",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/vms/ip": {
+      "post": {
+        "summary": "Set VM IP address and gateway",
+        "description": "Configures static IP CIDR or enables DHCP on a virtual machine interface.",
+        "tags": [
+          "Virtual Machines"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "QueryTokenAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetIPRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "IP address updated successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetIPResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request body or IP format",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Failed to apply IP configuration"
+          }
+        }
+      }
+    },
+    "/vms/network/add-nic": {
+      "post": {
+        "summary": "Add network interface (NIC)",
+        "description": "Appends the next available VirtIO network interface (`net0` through `net31`) to the VM on bridge `vmbr0`.",
+        "tags": [
+          "VM Networking"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "QueryTokenAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddNICRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Interface added successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AddNICResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request body"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Failed to add NIC"
+          }
+        }
+      }
+    },
+    "/vms/network/remove": {
+      "post": {
+        "summary": "Remove network interface",
+        "description": "Detaches and removes the specified network interface from the virtual machine.",
+        "tags": [
+          "VM Networking"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "QueryTokenAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RemoveNICRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Interface removed successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RemoveNICResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request body"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Failed to remove NIC"
+          }
+        }
+      }
+    },
+    "/vms/network/delete": {
+      "post": {
+        "summary": "Remove network interface (alias)",
+        "description": "Alias endpoint for `/vms/network/remove`.",
+        "tags": [
+          "VM Networking"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "QueryTokenAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RemoveNICRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Interface removed successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RemoveNICResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/vms/network/create": {
+      "post": {
+        "summary": "Interconnect two VMs via dedicated VLAN",
+        "description": "Dynamically provisions an isolated 802.1Q VLAN tag and assigns it to specified NICs on both VMs.",
+        "tags": [
+          "VM Networking"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "QueryTokenAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateNetworkRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Network link established",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request body or machine IDs"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "VLAN allocation or configuration failure"
+          }
+        }
+      }
+    },
+    "/vms/network/disconnect": {
+      "post": {
+        "summary": "Disconnect link between two VMs",
+        "description": "Removes the VLAN link between two virtual machines.",
+        "tags": [
+          "VM Networking"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "QueryTokenAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DisconnectNetworkRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Interconnect detached",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request body"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Failed to disconnect network"
+          }
+        }
+      }
+    },
+    "/vms/network/lab-connect": {
+      "post": {
+        "summary": "Connect VM to shared lab network",
+        "description": "Connects the VM to the shared lab environment network VLAN.",
+        "tags": [
+          "VM Networking"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "QueryTokenAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LabNetworkRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Connected to lab network successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid VMID"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/vms/network/lab-disconnect": {
+      "post": {
+        "summary": "Disconnect VM from shared lab network",
+        "description": "Detaches the VM from the shared lab environment network VLAN.",
+        "tags": [
+          "VM Networking"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "QueryTokenAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LabNetworkRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Disconnected from lab network successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid VMID"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/vms/console/ws": {
+      "get": {
+        "summary": "Serial terminal WebSocket proxy",
+        "description": "WebSocket endpoint proxying bidirectional serial communication to Proxmox `termproxy` for `serial0`.\nIdeal for xterm.js serial consoles.\n",
+        "tags": [
+          "Remote Consoles"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "QueryTokenAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "vmid",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "VMID of the virtual machine"
+          },
+          {
+            "name": "token",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Session token for WebSocket handshake authentication"
+          },
+          {
+            "name": "node",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Target Proxmox node name (optional)"
+          }
+        ],
+        "responses": {
+          "101": {
+            "description": "Switching Protocols - WebSocket stream established"
+          },
+          "400": {
+            "description": "Missing or invalid VMID"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/vms/console/vnc": {
+      "get": {
+        "summary": "noVNC graphical RFB WebSocket proxy",
+        "description": "WebSocket endpoint providing raw binary RFB protocol stream to Proxmox `vncwebsocket`.\nSupports noVNC in-browser display.\n",
+        "tags": [
+          "Remote Consoles"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "QueryTokenAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "vmid",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "VMID of the virtual machine"
+          },
+          {
+            "name": "token",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Session token for WebSocket handshake authentication"
+          },
+          {
+            "name": "node",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Target Proxmox node name (optional)"
+          }
+        ],
+        "responses": {
+          "101": {
+            "description": "Switching Protocols - WebSocket binary stream established"
+          },
+          "400": {
+            "description": "Missing or invalid VMID"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/vms/console/external": {
+      "post": {
+        "summary": "Start external TCP VNC proxy",
+        "description": "Starts an ephemeral TCP proxy on the backend listening on a dedicated port for external native VNC viewers (e.g. TigerVNC, RealVNC, Remmina).",
+        "tags": [
+          "Remote Consoles"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "QueryTokenAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExternalVNCRequest"
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "vmid",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "node",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "External VNC listener started",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExternalVNCInfo"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing VMID"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Failed to start VNC proxy"
+          }
+        }
+      }
+    },
+    "/vms/console/external/file": {
+      "get": {
+        "summary": "Download .vnc connection configuration file",
+        "description": "Generates and streams a `.vnc` file configured to connect to the active external VNC proxy port.",
+        "tags": [
+          "Remote Consoles"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "QueryTokenAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "vmid",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "VNC configuration profile",
+            "content": {
+              "application/x-vnc": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing or invalid VMID"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Proxy not running or failed to generate file"
+          }
+        }
+      }
+    },
+    "/vms/console/external/{vmid}": {
+      "delete": {
+        "summary": "Stop external TCP VNC proxy",
+        "description": "Stops and closes the external TCP VNC listener for the given VMID.",
+        "tags": [
+          "Remote Consoles"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "QueryTokenAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "vmid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "External VNC proxy stopped",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string",
+                      "example": "VNC proxy stopped"
+                    },
+                    "vmid": {
+                      "type": "integer",
+                      "example": 105
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid VMID"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/vms/console/clipboard": {
+      "get": {
+        "summary": "Read VM guest clipboard",
+        "description": "Reads current clipboard text from the guest OS via QEMU Guest Agent.",
+        "tags": [
+          "Remote Consoles"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "QueryTokenAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "vmid",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "node",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Clipboard text contents",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GetClipboardResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing or invalid VMID"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Failed to read guest agent clipboard"
+          }
+        }
+      },
+      "post": {
+        "summary": "Set VM guest clipboard",
+        "description": "Injects text into the guest OS clipboard via QEMU Guest Agent.",
+        "tags": [
+          "Remote Consoles"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "QueryTokenAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetClipboardRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Clipboard updated successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request body or missing VMID"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Failed to set guest agent clipboard"
+          }
+        }
+      }
+    },
+    "/vms/{id}/project": {
+      "post": {
+        "summary": "Assign VM to project",
+        "description": "Associates a virtual machine with a specific project container.",
+        "tags": [
+          "Projects"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "QueryTokenAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "VMID"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssignVMProjectRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "VM assigned to project successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid VMID or project ID"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/catalog": {
+      "get": {
+        "summary": "List appliance catalog",
+        "description": "Returns pre-configured virtual appliances, vulnerable targets, and OS images.",
+        "tags": [
+          "Appliance Catalog"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "QueryTokenAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Catalog items",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CatalogItem"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Failed to retrieve catalog"
+          }
+        }
+      }
+    },
+    "/catalog/deploy": {
+      "post": {
+        "summary": "Deploy catalog appliance",
+        "description": "Deploys a selected catalog appliance with customized hardware and network settings.",
+        "tags": [
+          "Appliance Catalog"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "QueryTokenAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeployCatalogRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Appliance successfully deployed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VM"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request payload or missing catalog ID"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Deployment failure"
+          }
+        }
+      }
+    },
+    "/projects": {
+      "get": {
+        "summary": "List projects",
+        "description": "Lists projects owned by user (or all projects if teacher/admin).",
+        "tags": [
+          "Projects"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "QueryTokenAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of projects",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Project"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      },
+      "post": {
+        "summary": "Create project",
+        "description": "Creates a new user project workspace.",
+        "tags": [
+          "Projects"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "QueryTokenAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateProjectRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Project created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Project"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request body"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/projects/{id}": {
+      "put": {
+        "summary": "Update project",
+        "description": "Modifies name, description, or color tag of an existing project.",
+        "tags": [
+          "Projects"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "QueryTokenAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Project ID"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateProjectRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Project updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Project"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request or project not found"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete project",
+        "description": "Deletes the project and unlinks all associated VMs.",
+        "tags": [
+          "Projects"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "QueryTokenAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Project ID"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Project deleted successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid project ID"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/projects/{id}/vms": {
+      "post": {
+        "summary": "Add VM(s) to project",
+        "description": "Associates one or multiple virtual machines with the specified project.",
+        "tags": [
+          "Projects"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "QueryTokenAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Project ID"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddVMToProjectRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "VM(s) added to project",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid VMID or project ID"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/projects/{id}/vms/{vmid}": {
+      "delete": {
+        "summary": "Remove VM from project",
+        "description": "Disassociates a virtual machine from the project.",
+        "tags": [
+          "Projects"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "QueryTokenAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Project ID"
+          },
+          {
+            "name": "vmid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "VMID"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "VM removed from project",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid VMID or project ID"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/labs/templates": {
+      "get": {
+        "summary": "List lab templates",
+        "description": "Returns multi-VM laboratory blueprints including network interconnect topology definitions.",
+        "tags": [
+          "Labs Management"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "QueryTokenAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of lab templates",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/LabTemplate"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      },
+      "post": {
+        "summary": "Create lab template",
+        "description": "Creates a new lab blueprint with VM topologies and VLAN interconnects. Requires teacher or admin role.",
+        "tags": [
+          "Labs Management"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "QueryTokenAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LabTemplate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Lab template created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabTemplate"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid payload"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Teacher role required"
+          }
+        }
+      }
+    },
+    "/labs/templates/{id}": {
+      "get": {
+        "summary": "Get lab template details",
+        "description": "Retrieves a single lab blueprint by ID.",
+        "tags": [
+          "Labs Management"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "QueryTokenAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Lab Template ID"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lab template details",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabTemplate"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Template not found"
+          }
+        }
+      },
+      "put": {
+        "summary": "Update lab template",
+        "description": "Modifies an existing lab template. Requires teacher or admin role.",
+        "tags": [
+          "Labs Management"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "QueryTokenAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Lab Template ID"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LabTemplate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Lab template updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Teacher role required"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete lab template",
+        "description": "Removes a lab blueprint. Requires teacher or admin role.",
+        "tags": [
+          "Labs Management"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "QueryTokenAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Lab Template ID"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lab template deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Teacher role required"
+          }
+        }
+      }
+    },
+    "/labs/deploy": {
+      "post": {
+        "summary": "Deploy multi-VM lab topology",
+        "description": "Deploys all VMs in a lab template, dynamically assigns isolated 802.1Q VLANs according to blueprint networks, and records the active lab instance.",
+        "tags": [
+          "Labs Management"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "QueryTokenAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeployLabRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Lab successfully deployed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LabInstance"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing or invalid template ID"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Deployment failure"
+          }
+        }
+      }
+    },
+    "/labs/instances": {
+      "get": {
+        "summary": "List active lab instances",
+        "description": "Returns active lab instances deployed by user (or all deployed labs if teacher/admin).",
+        "tags": [
+          "Labs Management"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "QueryTokenAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of deployed lab instances",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/LabInstance"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/labs/instances/{id}/start": {
+      "post": {
+        "summary": "Start all VMs in lab instance",
+        "description": "Powers on all virtual machines that comprise the deployed lab environment.",
+        "tags": [
+          "Labs Management"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "QueryTokenAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Lab Instance ID"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lab instance started",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Failed to start VMs"
+          }
+        }
+      }
+    },
+    "/labs/instances/{id}/stop": {
+      "post": {
+        "summary": "Stop all VMs in lab instance",
+        "description": "Powers off all virtual machines in the deployed lab environment.",
+        "tags": [
+          "Labs Management"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "QueryTokenAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Lab Instance ID"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lab instance stopped",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Failed to stop VMs"
+          }
+        }
+      }
+    },
+    "/labs/instances/{id}": {
+      "delete": {
+        "summary": "Tear down lab instance",
+        "description": "Destroys all virtual machines in the lab instance and removes the deployment record.",
+        "tags": [
+          "Labs Management"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "QueryTokenAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Lab Instance ID"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lab instance deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Failed to destroy lab instance"
+          }
+        }
+      }
+    },
+    "/teacher/students": {
+      "get": {
+        "summary": "List students with metrics",
+        "description": "Lists student accounts along with total VM count, running VM count, and active deployed labs. Requires teacher or admin role.",
+        "tags": [
+          "Teacher Administration"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "QueryTokenAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of students",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TeacherStudentInfo"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Teacher role required"
+          }
+        }
+      },
+      "post": {
+        "summary": "Create student account",
+        "description": "Creates a new student or teacher account in MongoDB. Requires teacher or admin role.",
+        "tags": [
+          "Teacher Administration"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "QueryTokenAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateStudentRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Student created successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserInfo"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid email/password or user already exists"
+          },
+          "403": {
+            "description": "Teacher role required"
+          }
+        }
+      }
+    },
+    "/teacher/students/{id}": {
+      "delete": {
+        "summary": "Delete student account",
+        "description": "Removes student account from MongoDB. Requires teacher or admin role.",
+        "tags": [
+          "Teacher Administration"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "QueryTokenAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Student UUID"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Student account removed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "example": "deleted"
+                    },
+                    "uuid": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Teacher role required"
+          }
+        }
+      }
+    },
+    "/teacher/students/{id}/reset-password": {
+      "post": {
+        "summary": "Reset student password",
+        "description": "Updates password for a student account. Requires teacher or admin role.",
+        "tags": [
+          "Teacher Administration"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "QueryTokenAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Student UUID"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResetPasswordRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Password reset successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "example": "password_reset"
+                    },
+                    "uuid": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Password cannot be empty"
+          },
+          "403": {
+            "description": "Teacher role required"
+          }
+        }
+      }
+    },
+    "/teacher/vms": {
+      "get": {
+        "summary": "List all cluster VMs",
+        "description": "Lists all virtual machines across all students and nodes in the cluster. Requires teacher or admin role.",
+        "tags": [
+          "Teacher Administration"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "QueryTokenAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Complete cluster VM inventory",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/VM"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Teacher role required"
+          }
+        }
+      }
+    },
+    "/teacher/vms/bulk-action": {
+      "post": {
+        "summary": "Classroom bulk action",
+        "description": "Performs a batch action across classroom virtual machines (e.g. `stop_all`). Requires teacher or admin role.",
+        "tags": [
+          "Teacher Administration"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "QueryTokenAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BulkActionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Bulk action executed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "example": "completed"
+                    },
+                    "action": {
+                      "type": "string",
+                      "example": "stop_all"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Unsupported action"
+          },
+          "403": {
+            "description": "Teacher role required"
+          }
+        }
+      }
+    },
+    "/vms/templates/convert": {
+      "post": {
+        "summary": "Convert VM into template",
+        "description": "Converts an existing virtual machine into a reusable Proxmox template. Requires teacher or admin role.",
+        "tags": [
+          "Template Management"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "QueryTokenAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConvertVMToTemplateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "VM converted to template",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string",
+                      "example": "VM successfully converted to template"
+                    },
+                    "template": {
+                      "$ref": "#/components/schemas/VM"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid VMID"
+          },
+          "403": {
+            "description": "Teacher role required"
+          }
+        }
+      }
+    },
+    "/vms/templates/clone-as-template": {
+      "post": {
+        "summary": "Clone VM and convert clone into template",
+        "description": "Creates a clone of a source VM and converts the newly cloned VM into a template. Requires teacher or admin role.",
+        "tags": [
+          "Template Management"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "QueryTokenAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateTemplateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Template successfully created from clone",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string",
+                      "example": "Template successfully created from clone"
+                    },
+                    "template": {
+                      "$ref": "#/components/schemas/VM"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request parameters"
+          },
+          "403": {
+            "description": "Teacher role required"
+          }
+        }
+      }
+    },
+    "/teacher/nodes": {
+      "get": {
+        "summary": "List load balancing pool telemetry",
+        "description": "Returns real-time telemetry (CPU%, RAM%, total/free/used RAM, active VM count, weight, online status, templates) from the multi-node load balancer pool. Requires teacher or admin role.",
+        "tags": [
+          "Cluster & Nodes"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "QueryTokenAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Node telemetry array",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/NodeTelemetry"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Teacher role required"
+          }
+        }
+      },
+      "post": {
+        "summary": "Register standalone node into balancing pool",
+        "description": "Adds a standalone Proxmox VE node to the dynamic load balancer pool with dedicated weight. Requires teacher or admin role.",
+        "tags": [
+          "Cluster & Nodes"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "QueryTokenAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StandaloneNode"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Node successfully registered",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string",
+                      "example": "Node successfully registered in balancing pool"
+                    },
+                    "node": {
+                      "$ref": "#/components/schemas/StandaloneNode"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing host_uri, username, or password"
+          },
+          "403": {
+            "description": "Teacher role required"
+          }
+        }
+      }
+    },
+    "/teacher/nodes/{id}": {
+      "delete": {
+        "summary": "Remove standalone node from pool",
+        "description": "Removes a Proxmox node from the load balancing pool. Requires teacher or admin role.",
+        "tags": [
+          "Cluster & Nodes"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "QueryTokenAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Node name or ID"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Node removed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Teacher role required"
+          }
+        }
+      }
+    },
+    "/teacher/nodes/refresh": {
+      "post": {
+        "summary": "Refresh cluster node telemetry",
+        "description": "Triggers an immediate refresh of hardware telemetry and template discovery across all cluster nodes. Requires teacher or admin role.",
+        "tags": [
+          "Cluster & Nodes"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          },
+          {
+            "QueryTokenAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Telemetry refreshed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string",
+                      "example": "Telemetry refreshed"
+                    },
+                    "telemetry": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/NodeTelemetry"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Teacher role required"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "BearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "Token",
+        "description": "Session token obtained from /auth/login. Header format: 'Authorization: Bearer <token>' or 'Authorization: <token>'."
+      },
+      "QueryTokenAuth": {
+        "type": "apiKey",
+        "in": "query",
+        "name": "token",
+        "description": "Session token passed via URL query parameter ?token=<token>. Essential for browser WebSocket handshakes."
+      }
+    },
+    "schemas": {
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string",
+            "example": "invalid username or password"
+          }
+        }
+      },
+      "StatusResponse": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "example": "created"
+          },
+          "message": {
+            "type": "string",
+            "example": "operation completed successfully"
+          },
+          "id": {
+            "type": "string",
+            "example": "671cb0a84d123e4567890abc"
+          }
+        }
+      },
+      "PingResponse": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string",
+            "example": "pong"
+          },
+          "uuid": {
+            "type": "string",
+            "example": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+          },
+          "role": {
+            "type": "string",
+            "example": "student"
+          },
+          "email": {
+            "type": "string",
+            "example": "student@lab411.cz"
+          }
+        }
+      },
+      "UserLoginRequest": {
+        "type": "object",
+        "required": [
+          "password"
+        ],
+        "properties": {
+          "email": {
+            "type": "string",
+            "example": "student@lab411.cz"
+          },
+          "username": {
+            "type": "string",
+            "example": "student"
+          },
+          "password": {
+            "type": "string",
+            "example": "SecretPassword123"
+          }
+        }
+      },
+      "LoginResponse": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string",
+            "example": "Login successful"
+          },
+          "token": {
+            "type": "string",
+            "example": "d741cbef-81a1-4328-9177-3bc8c8699b0c"
+          },
+          "user": {
+            "type": "string",
+            "example": "student@lab411.cz"
+          },
+          "role": {
+            "type": "string",
+            "example": "student"
+          },
+          "uuid": {
+            "type": "string",
+            "example": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+          }
+        }
+      },
+      "VMConnection": {
+        "type": "object",
+        "properties": {
+          "target_vm_id": {
+            "type": "string",
+            "example": "102"
+          },
+          "local_nic": {
+            "type": "string",
+            "example": "net1"
+          },
+          "target_nic": {
+            "type": "string",
+            "example": "net1"
+          }
+        }
+      },
+      "VM": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "oneOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "example": 101
+          },
+          "uuid": {
+            "type": "string",
+            "example": "9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d"
+          },
+          "type": {
+            "type": "string",
+            "example": "qemu"
+          },
+          "owner_uuid": {
+            "type": "string",
+            "example": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+          },
+          "owner_email": {
+            "type": "string",
+            "example": "student@lab411.cz"
+          },
+          "lab_id": {
+            "type": "string",
+            "example": "671cb0a84d123e4567890abc"
+          },
+          "lab_name": {
+            "type": "string",
+            "example": "Network Security Basics"
+          },
+          "project_id": {
+            "type": "string",
+            "example": "671cb0a84d123e4567890abc"
+          },
+          "project_name": {
+            "type": "string",
+            "example": "Red Team Lab"
+          },
+          "project_color": {
+            "type": "string",
+            "example": "#ff5722"
+          },
+          "node": {
+            "type": "string",
+            "example": "pve1"
+          },
+          "name": {
+            "type": "string",
+            "example": "kali-workstation"
+          },
+          "status": {
+            "type": "string",
+            "example": "Running"
+          },
+          "ram_mb": {
+            "type": "integer",
+            "example": 2048
+          },
+          "ip_address": {
+            "type": "string",
+            "example": "192.168.10.15"
+          },
+          "configured_ip": {
+            "type": "string",
+            "example": "192.168.10.15/24"
+          },
+          "gateway": {
+            "type": "string",
+            "example": "192.168.10.1"
+          },
+          "is_vulnerable": {
+            "type": "boolean",
+            "example": false
+          },
+          "category": {
+            "type": "string",
+            "example": "Workstation"
+          },
+          "cve_id": {
+            "type": "string",
+            "example": ""
+          },
+          "cvss": {
+            "type": "string",
+            "example": ""
+          },
+          "port": {
+            "type": "integer",
+            "example": 0
+          },
+          "exploit_hint": {
+            "type": "string",
+            "example": ""
+          },
+          "exploit_doc": {
+            "type": "string",
+            "example": ""
+          },
+          "owner": {
+            "type": "string",
+            "example": "student@lab411.cz"
+          },
+          "networks": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "example": [
+              "net0: 100",
+              "net1: 105"
+            ]
+          },
+          "available_nics": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "example": [
+              "net2",
+              "net3"
+            ]
+          },
+          "connections": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VMConnection"
+            }
+          },
+          "has_internet": {
+            "type": "boolean",
+            "example": true
+          },
+          "is_attacker": {
+            "type": "boolean",
+            "example": true
+          }
+        }
+      },
+      "CreateVMRequest": {
+        "type": "object",
+        "required": [
+          "name",
+          "template_id"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "example": "my-workstation"
+          },
+          "template_id": {
+            "oneOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "example": 100
+          },
+          "node": {
+            "type": "string",
+            "example": "pve1"
+          },
+          "project_id": {
+            "type": "string",
+            "example": "671cb0a84d123e4567890abc"
+          }
+        }
+      },
+      "CreateVMResponse": {
+        "type": "object",
+        "properties": {
+          "uuid": {
+            "type": "string",
+            "example": "f81d4fae-7dec-11d0-a765-00a0c91e6bf6"
+          },
+          "vmid": {
+            "type": "integer",
+            "example": 105
+          },
+          "project_id": {
+            "type": "string",
+            "example": "671cb0a84d123e4567890abc"
+          }
+        }
+      },
+      "VMActionRequest": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer",
+            "example": 105
+          },
+          "node": {
+            "type": "string",
+            "example": "pve1"
+          }
+        }
+      },
+      "VMActionResponse": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "example": "started"
+          },
+          "id": {
+            "type": "integer",
+            "example": 105
+          }
+        }
+      },
+      "SetIPRequest": {
+        "type": "object",
+        "required": [
+          "vmid"
+        ],
+        "properties": {
+          "vmid": {
+            "type": "integer",
+            "example": 105
+          },
+          "nic": {
+            "type": "string",
+            "example": "net0"
+          },
+          "ip": {
+            "type": "string",
+            "example": "192.168.10.15/24"
+          },
+          "gateway": {
+            "type": "string",
+            "example": "192.168.10.1"
+          },
+          "is_dhcp": {
+            "type": "boolean",
+            "example": false
+          },
+          "node": {
+            "type": "string",
+            "example": "pve1"
+          }
+        }
+      },
+      "SetIPResponse": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string",
+            "example": "IP adresa byla \u00fasp\u011b\u0161n\u011b nastavena"
+          },
+          "vmid": {
+            "type": "integer",
+            "example": 105
+          }
+        }
+      },
+      "AddNICRequest": {
+        "type": "object",
+        "required": [
+          "vmid"
+        ],
+        "properties": {
+          "vmid": {
+            "type": "integer",
+            "example": 105
+          }
+        }
+      },
+      "AddNICResponse": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "example": "added"
+          },
+          "nic": {
+            "type": "string",
+            "example": "net1"
+          }
+        }
+      },
+      "RemoveNICRequest": {
+        "type": "object",
+        "required": [
+          "vmid",
+          "nic"
+        ],
+        "properties": {
+          "vmid": {
+            "type": "integer",
+            "example": 105
+          },
+          "nic": {
+            "type": "string",
+            "example": "net1"
+          }
+        }
+      },
+      "RemoveNICResponse": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "example": "removed"
+          },
+          "nic": {
+            "type": "string",
+            "example": "net1"
+          }
+        }
+      },
+      "CreateNetworkRequest": {
+        "type": "object",
+        "properties": {
+          "vmid1": {
+            "type": "integer",
+            "example": 101
+          },
+          "vmid2": {
+            "type": "integer",
+            "example": 102
+          },
+          "nic1": {
+            "type": "string",
+            "example": "net1"
+          },
+          "nic2": {
+            "type": "string",
+            "example": "net1"
+          },
+          "vmid": {
+            "type": "integer",
+            "example": 101
+          },
+          "target_vm_id": {
+            "type": "integer",
+            "example": 102
+          },
+          "local_nic": {
+            "type": "string",
+            "example": "net1"
+          },
+          "target_nic": {
+            "type": "string",
+            "example": "net1"
+          }
+        }
+      },
+      "DisconnectNetworkRequest": {
+        "type": "object",
+        "properties": {
+          "vmid1": {
+            "type": "integer",
+            "example": 101
+          },
+          "vmid2": {
+            "type": "integer",
+            "example": 102
+          },
+          "nic": {
+            "type": "string",
+            "example": "net1"
+          },
+          "vmid": {
+            "type": "integer",
+            "example": 101
+          },
+          "target_vm_id": {
+            "type": "integer",
+            "example": 102
+          },
+          "target_nic": {
+            "type": "string",
+            "example": "net1"
+          }
+        }
+      },
+      "LabNetworkRequest": {
+        "type": "object",
+        "required": [
+          "vmid"
+        ],
+        "properties": {
+          "vmid": {
+            "type": "integer",
+            "example": 105
+          }
+        }
+      },
+      "ExternalVNCRequest": {
+        "type": "object",
+        "properties": {
+          "vmid": {
+            "type": "integer",
+            "example": 105
+          },
+          "node": {
+            "type": "string",
+            "example": "pve1"
+          }
+        }
+      },
+      "ExternalVNCInfo": {
+        "type": "object",
+        "properties": {
+          "vmid": {
+            "type": "integer",
+            "example": 105
+          },
+          "host": {
+            "type": "string",
+            "example": "backend.lab411.cz"
+          },
+          "port": {
+            "type": "integer",
+            "example": 5901
+          },
+          "display": {
+            "type": "integer",
+            "example": 1
+          },
+          "command": {
+            "type": "string",
+            "example": "vncviewer backend.lab411.cz:5901"
+          },
+          "vnc_url": {
+            "type": "string",
+            "example": "vnc://backend.lab411.cz:5901"
+          },
+          "file_url": {
+            "type": "string",
+            "example": "/vms/console/external/file?vmid=105"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2026-11-03T12:00:00Z"
+          },
+          "active_conn": {
+            "type": "integer",
+            "example": 1
+          }
+        }
+      },
+      "SetClipboardRequest": {
+        "type": "object",
+        "required": [
+          "vmid",
+          "text"
+        ],
+        "properties": {
+          "vmid": {
+            "type": "integer",
+            "example": 105
+          },
+          "text": {
+            "type": "string",
+            "example": "Text to inject into VM clipboard"
+          },
+          "node": {
+            "type": "string",
+            "example": "pve1"
+          }
+        }
+      },
+      "GetClipboardResponse": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string",
+            "example": "Guest OS clipboard contents"
+          }
+        }
+      },
+      "CatalogItem": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "cve-php-8.1.0-dev"
+          },
+          "name": {
+            "type": "string",
+            "example": "PHP 8.1.0-dev RCE Target"
+          },
+          "type": {
+            "type": "string",
+            "example": "vm"
+          },
+          "category": {
+            "type": "string",
+            "example": "Web Vulnerability"
+          },
+          "description": {
+            "type": "string",
+            "example": "Vulnerable PHP 8.1.0-dev backdoor target (zerodium backdoor)"
+          },
+          "template_id": {
+            "type": "integer",
+            "example": 100
+          },
+          "ostemplate": {
+            "type": "string",
+            "example": "ubuntu-22.04-standard"
+          },
+          "default_ram": {
+            "type": "integer",
+            "example": 2048
+          },
+          "default_disk_gb": {
+            "type": "integer",
+            "example": 20
+          },
+          "default_cpus": {
+            "type": "integer",
+            "example": 2
+          },
+          "is_vulnerable": {
+            "type": "boolean",
+            "example": true
+          },
+          "ready": {
+            "type": "boolean",
+            "example": true
+          },
+          "cve_id": {
+            "type": "string",
+            "example": "CVE-2021-3677"
+          },
+          "cvss": {
+            "type": "string",
+            "example": "9.8"
+          },
+          "port": {
+            "type": "integer",
+            "example": 80
+          },
+          "exploit_hint": {
+            "type": "string",
+            "example": "Check User-Agentt header"
+          },
+          "exploit_doc": {
+            "type": "string",
+            "example": "Send zerodiumsystem('id'); in User-Agentt header"
+          }
+        }
+      },
+      "DeployCatalogRequest": {
+        "type": "object",
+        "required": [
+          "catalog_id",
+          "name"
+        ],
+        "properties": {
+          "catalog_id": {
+            "type": "string",
+            "example": "cve-php-8.1.0-dev"
+          },
+          "name": {
+            "type": "string",
+            "example": "my-php-target"
+          },
+          "ram": {
+            "type": "integer",
+            "example": 2048
+          },
+          "cores": {
+            "type": "integer",
+            "example": 2
+          },
+          "disk": {
+            "type": "integer",
+            "example": 20
+          },
+          "project_id": {
+            "type": "string",
+            "example": "671cb0a84d123e4567890abc"
+          },
+          "ip": {
+            "type": "string",
+            "example": "192.168.10.20/24"
+          },
+          "gateway": {
+            "type": "string",
+            "example": "192.168.10.1"
+          },
+          "is_dhcp": {
+            "type": "boolean",
+            "example": false
+          },
+          "node": {
+            "type": "string",
+            "example": "pve1"
+          },
+          "password": {
+            "type": "string",
+            "example": "Lab411Password!"
+          }
+        }
+      },
+      "Project": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "671cb0a84d123e4567890abc"
+          },
+          "name": {
+            "type": "string",
+            "example": "Cyber Defense Lab"
+          },
+          "description": {
+            "type": "string",
+            "example": "Red vs Blue security playground"
+          },
+          "color": {
+            "type": "string",
+            "example": "#ff5722"
+          },
+          "owner_uuid": {
+            "type": "string",
+            "example": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+          },
+          "owner_email": {
+            "type": "string",
+            "example": "student@lab411.cz"
+          },
+          "vm_ids": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            },
+            "example": [
+              105,
+              106
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "CreateProjectRequest": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "example": "Cyber Defense Lab"
+          },
+          "description": {
+            "type": "string",
+            "example": "Red vs Blue security playground"
+          },
+          "color": {
+            "type": "string",
+            "example": "#ff5722"
+          }
+        }
+      },
+      "UpdateProjectRequest": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "example": "Updated Lab Name"
+          },
+          "description": {
+            "type": "string",
+            "example": "New project description"
+          },
+          "color": {
+            "type": "string",
+            "example": "#4caf50"
+          }
+        }
+      },
+      "AddVMToProjectRequest": {
+        "type": "object",
+        "properties": {
+          "vm_id": {
+            "type": "integer",
+            "example": 105
+          },
+          "vm_ids": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            },
+            "example": [
+              105,
+              106
+            ]
+          }
+        }
+      },
+      "AssignVMProjectRequest": {
+        "type": "object",
+        "required": [
+          "project_id"
+        ],
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "example": "671cb0a84d123e4567890abc"
+          }
+        }
+      },
+      "LabVMTemplate": {
+        "type": "object",
+        "required": [
+          "name",
+          "template_id"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "example": "Kali-Attacker"
+          },
+          "template_id": {
+            "type": "integer",
+            "example": 100
+          },
+          "node": {
+            "type": "string",
+            "example": "pve1"
+          },
+          "description": {
+            "type": "string",
+            "example": "Pre-configured attacker machine"
+          },
+          "ram_mb": {
+            "type": "integer",
+            "example": 4096
+          },
+          "default_user": {
+            "type": "string",
+            "example": "kali"
+          },
+          "default_password": {
+            "type": "string",
+            "example": "kali"
+          }
+        }
+      },
+      "LabNetworkLink": {
+        "type": "object",
+        "required": [
+          "from_vm",
+          "to_vm"
+        ],
+        "properties": {
+          "from_vm": {
+            "type": "string",
+            "example": "Kali-Attacker"
+          },
+          "from_nic": {
+            "type": "string",
+            "example": "net1"
+          },
+          "to_vm": {
+            "type": "string",
+            "example": "Vulnerable-Server"
+          },
+          "to_nic": {
+            "type": "string",
+            "example": "net1"
+          },
+          "label": {
+            "type": "string",
+            "example": "Isolated Exploit Network"
+          }
+        }
+      },
+      "LabTemplate": {
+        "type": "object",
+        "required": [
+          "name",
+          "vms"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "671cb0a84d123e4567890abc"
+          },
+          "name": {
+            "type": "string",
+            "example": "Web Application Penetration Testing"
+          },
+          "category": {
+            "type": "string",
+            "example": "Cybersecurity"
+          },
+          "difficulty": {
+            "type": "string",
+            "example": "Intermediate"
+          },
+          "description": {
+            "type": "string",
+            "example": "Hands-on laboratory exploring SQL injection and remote code execution"
+          },
+          "objectives": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "example": [
+              "Identify PHP backdoor",
+              "Gain root shell",
+              "Exfiltrate flag.txt"
+            ]
+          },
+          "vms": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LabVMTemplate"
+            }
+          },
+          "networks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LabNetworkLink"
+            }
+          },
+          "created_by": {
+            "type": "string",
+            "example": "teacher-uuid"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "LabInstanceVM": {
+        "type": "object",
+        "properties": {
+          "template_vm_name": {
+            "type": "string",
+            "example": "Kali-Attacker"
+          },
+          "vmid": {
+            "type": "integer",
+            "example": 105
+          },
+          "name": {
+            "type": "string",
+            "example": "lab-team1-kali"
+          },
+          "default_user": {
+            "type": "string",
+            "example": "kali"
+          },
+          "default_password": {
+            "type": "string",
+            "example": "kali"
+          }
+        }
+      },
+      "LabInstance": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "671cb0a84d123e4567890abc"
+          },
+          "template_id": {
+            "type": "string",
+            "example": "671cb0a84d123e4567890abc"
+          },
+          "lab_name": {
+            "type": "string",
+            "example": "Web Application Penetration Testing"
+          },
+          "owner_uuid": {
+            "type": "string",
+            "example": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+          },
+          "owner_email": {
+            "type": "string",
+            "example": "student@lab411.cz"
+          },
+          "status": {
+            "type": "string",
+            "example": "running"
+          },
+          "vms": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LabInstanceVM"
+            }
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "DeployLabRequest": {
+        "type": "object",
+        "required": [
+          "template_id"
+        ],
+        "properties": {
+          "template_id": {
+            "type": "string",
+            "example": "671cb0a84d123e4567890abc"
+          },
+          "student_uuid": {
+            "type": "string",
+            "example": "optional-student-uuid-for-teachers"
+          },
+          "lab_prefix": {
+            "type": "string",
+            "example": "team1"
+          }
+        }
+      },
+      "UserInfo": {
+        "type": "object",
+        "properties": {
+          "uuid": {
+            "type": "string",
+            "example": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+          },
+          "email": {
+            "type": "string",
+            "example": "student@lab411.cz"
+          },
+          "role": {
+            "type": "string",
+            "example": "student"
+          }
+        }
+      },
+      "TeacherStudentInfo": {
+        "type": "object",
+        "properties": {
+          "uuid": {
+            "type": "string",
+            "example": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+          },
+          "email": {
+            "type": "string",
+            "example": "student@lab411.cz"
+          },
+          "role": {
+            "type": "string",
+            "example": "student"
+          },
+          "vm_count": {
+            "type": "integer",
+            "example": 3
+          },
+          "running_vms": {
+            "type": "integer",
+            "example": 1
+          },
+          "lab_count": {
+            "type": "integer",
+            "example": 1
+          }
+        }
+      },
+      "CreateStudentRequest": {
+        "type": "object",
+        "required": [
+          "email",
+          "password"
+        ],
+        "properties": {
+          "email": {
+            "type": "string",
+            "example": "student2@lab411.cz"
+          },
+          "password": {
+            "type": "string",
+            "example": "SecureInitialPassword123"
+          },
+          "role": {
+            "type": "string",
+            "example": "student"
+          }
+        }
+      },
+      "ResetPasswordRequest": {
+        "type": "object",
+        "required": [
+          "password"
+        ],
+        "properties": {
+          "password": {
+            "type": "string",
+            "example": "NewSecretPassword123"
+          }
+        }
+      },
+      "BulkActionRequest": {
+        "type": "object",
+        "required": [
+          "action"
+        ],
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "stop_all"
+            ],
+            "example": "stop_all"
+          }
+        }
+      },
+      "ConvertVMToTemplateRequest": {
+        "type": "object",
+        "required": [
+          "vmid"
+        ],
+        "properties": {
+          "vmid": {
+            "type": "integer",
+            "example": 105
+          },
+          "node": {
+            "type": "string",
+            "example": "pve1"
+          }
+        }
+      },
+      "CreateTemplateRequest": {
+        "type": "object",
+        "required": [
+          "source_vmid",
+          "template_name"
+        ],
+        "properties": {
+          "source_vmid": {
+            "type": "integer",
+            "example": 105
+          },
+          "source_node": {
+            "type": "string",
+            "example": "pve1"
+          },
+          "template_name": {
+            "type": "string",
+            "example": "ubuntu-24.04-security"
+          },
+          "clone_first": {
+            "type": "boolean",
+            "example": true
+          },
+          "target_node_id": {
+            "type": "string",
+            "example": "pve2"
+          },
+          "description": {
+            "type": "string",
+            "example": "Custom security baseline image"
+          },
+          "ram_mb": {
+            "type": "integer",
+            "example": 4096
+          }
+        }
+      },
+      "ProxmoxNodeInfo": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "example": "pve1"
+          },
+          "host_uri": {
+            "type": "string",
+            "example": "https://10.0.10.2:8006"
+          },
+          "status": {
+            "type": "string",
+            "example": "online"
+          },
+          "version": {
+            "type": "string",
+            "example": "8.2.4"
+          },
+          "total_vms": {
+            "type": "integer",
+            "example": 12
+          },
+          "running_vms": {
+            "type": "integer",
+            "example": 5
+          },
+          "templates": {
+            "type": "integer",
+            "example": 4
+          }
+        }
+      },
+      "StandaloneNode": {
+        "type": "object",
+        "required": [
+          "host_uri",
+          "username",
+          "password"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "pve2"
+          },
+          "name": {
+            "type": "string",
+            "example": "pve2"
+          },
+          "host_uri": {
+            "type": "string",
+            "example": "https://10.0.10.4:8006"
+          },
+          "username": {
+            "type": "string",
+            "example": "root@pam"
+          },
+          "password": {
+            "type": "string",
+            "example": "NodePassword123"
+          },
+          "weight": {
+            "type": "integer",
+            "example": 100
+          },
+          "is_active": {
+            "type": "boolean",
+            "example": true
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "NodeTelemetry": {
+        "type": "object",
+        "properties": {
+          "node_id": {
+            "type": "string",
+            "example": "pve1"
+          },
+          "node_name": {
+            "type": "string",
+            "example": "pve1"
+          },
+          "host_uri": {
+            "type": "string",
+            "example": "https://10.0.10.2:8006"
+          },
+          "is_online": {
+            "type": "boolean",
+            "example": true
+          },
+          "total_ram_mb": {
+            "type": "integer",
+            "example": 65536
+          },
+          "used_ram_mb": {
+            "type": "integer",
+            "example": 24576
+          },
+          "free_ram_mb": {
+            "type": "integer",
+            "example": 40960
+          },
+          "ram_usage_pct": {
+            "type": "number",
+            "format": "float",
+            "example": 37.5
+          },
+          "cpu_usage_pct": {
+            "type": "number",
+            "format": "float",
+            "example": 12.8
+          },
+          "active_vm_count": {
+            "type": "integer",
+            "example": 5
+          },
+          "total_vm_count": {
+            "type": "integer",
+            "example": 14
+          },
+          "templates": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            },
+            "example": [
+              100,
+              101,
+              102
+            ]
+          },
+          "weight": {
+            "type": "integer",
+            "example": 100
+          },
+          "is_active": {
+            "type": "boolean",
+            "example": true
+          },
+          "last_updated": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "error_message": {
+            "type": "string",
+            "example": ""
+          }
+        }
+      }
+    }
+  }
+}
