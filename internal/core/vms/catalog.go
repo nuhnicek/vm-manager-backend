@@ -380,7 +380,7 @@ func ListCatalog(conn types.Conn) ([]types.CatalogItem, error) {
 }
 
 func DeployCatalogItem(conn types.Conn, userUUID, role string, req types.DeployCatalogRequest) (*types.Vm, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
 	defer cancel()
 
 	var selectedItem *types.CatalogItem
@@ -476,8 +476,11 @@ func DeployCatalogItem(conn types.Conn, userUUID, role string, req types.DeployC
 			return nil, fmt.Errorf("klonování šablony selhalo: %w", err)
 		}
 		if task != nil {
-			if err := task.WaitFor(ctx, 5); err != nil {
+			if err := task.WaitFor(ctx, 600); err != nil {
 				return nil, fmt.Errorf("čekání na dokončení klonu selhalo: %w", err)
+			}
+			if task.ExitStatus != "" && task.ExitStatus != "OK" {
+				return nil, fmt.Errorf("klonování v Proxmox selhalo: %s", task.ExitStatus)
 			}
 		}
 
@@ -537,7 +540,7 @@ func DeployCatalogItem(conn types.Conn, userUUID, role string, req types.DeployC
 
 		startTask, err := newVM.Start(ctx)
 		if err == nil && startTask != nil {
-			_ = startTask.WaitFor(ctx, 3)
+			_ = startTask.WaitFor(ctx, 30)
 		}
 
 		if req.ProjectID != "" {
@@ -637,8 +640,11 @@ func DeployCatalogItem(conn types.Conn, userUUID, role string, req types.DeployC
 	}
 
 	if task != nil {
-		if err := task.WaitFor(ctx, 5); err != nil {
+		if err := task.WaitFor(ctx, 300); err != nil {
 			return nil, fmt.Errorf("čekání na dokončení kontejneru selhalo: %w", err)
+		}
+		if task.ExitStatus != "" && task.ExitStatus != "OK" {
+			return nil, fmt.Errorf("vytvoření kontejneru v Proxmox selhalo: %s", task.ExitStatus)
 		}
 	}
 
@@ -646,7 +652,7 @@ func DeployCatalogItem(conn types.Conn, userUUID, role string, req types.DeployC
 	if err == nil && ct != nil && !strings.EqualFold(ct.Status, "running") {
 		startTask, err := ct.Start(ctx)
 		if err == nil && startTask != nil {
-			_ = startTask.WaitFor(ctx, 3)
+			_ = startTask.WaitFor(ctx, 30)
 		}
 	}
 

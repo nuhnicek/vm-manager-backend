@@ -92,7 +92,7 @@ func CloneVMAsTemplate(conn types.Conn, userUUID string, role string, req types.
 		req.TemplateName = fmt.Sprintf("template-%d", req.SourceVMID)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
 	defer cancel()
 
 	var nodeObj *proxmox.Node
@@ -139,8 +139,11 @@ func CloneVMAsTemplate(conn types.Conn, userUUID string, role string, req types.
 		return nil, fmt.Errorf("failed to clone source VM %d for template: %w", req.SourceVMID, err)
 	}
 	if cloneTask != nil {
-		if err := cloneTask.WaitFor(ctx, 60); err != nil {
+		if err := cloneTask.WaitFor(ctx, 600); err != nil {
 			return nil, fmt.Errorf("clone task failed: %w", err)
+		}
+		if cloneTask.ExitStatus != "" && cloneTask.ExitStatus != "OK" {
+			return nil, fmt.Errorf("clone task failed in Proxmox: %s", cloneTask.ExitStatus)
 		}
 	}
 

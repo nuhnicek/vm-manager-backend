@@ -29,7 +29,7 @@ func DeployLab(conn types.Conn, templateID string, targetUserUUID string, target
 		}
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
 	defer cancel()
 
 	totalLabRAM := 0
@@ -113,8 +113,13 @@ func DeployLab(conn types.Conn, templateID string, targetUserUUID string, target
 			return nil, fmt.Errorf("failed to clone VM for %s from template %d on node %s: %w", vmTpl.Name, targetTemplateID, node.Name, err)
 		}
 
-		if err := task.WaitFor(ctx, 3); err != nil {
-			return nil, fmt.Errorf("clone task failed for %s: %w", vmTpl.Name, err)
+		if task != nil {
+			if err := task.WaitFor(ctx, 600); err != nil {
+				return nil, fmt.Errorf("clone task failed for %s: %w", vmTpl.Name, err)
+			}
+			if task.ExitStatus != "" && task.ExitStatus != "OK" {
+				return nil, fmt.Errorf("clone task for %s failed in Proxmox: %s", vmTpl.Name, task.ExitStatus)
+			}
 		}
 
 		clonedVM, err := node.VirtualMachine(ctx, newVmID)

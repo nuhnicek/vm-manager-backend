@@ -11,7 +11,7 @@ import (
 )
 
 func CreateFromTemplate(conn types.Conn, ownerUUID string, vmName string, templateID int, targetNodes ...string) (error, string, int) {
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
 	defer cancel()
 
 	targetNode := ""
@@ -70,8 +70,13 @@ func CreateFromTemplate(conn types.Conn, ownerUUID string, vmName string, templa
 		return err, "", 0
 	}
 
-	if err := task.WaitFor(ctx, 3); err != nil {
-		return err, "", 0
+	if task != nil {
+		if err := task.WaitFor(ctx, 600); err != nil {
+			return fmt.Errorf("čekání na dokončení klonu selhalo: %w", err), "", 0
+		}
+		if task.ExitStatus != "" && task.ExitStatus != "OK" {
+			return fmt.Errorf("klonování šablony v Proxmox selhalo: %s", task.ExitStatus), "", 0
+		}
 	}
 	newVM, err := node.VirtualMachine(ctx, newVmID)
 	if err != nil {

@@ -129,7 +129,7 @@ func DeleteVM(conn types.Conn, userUUID string, role string, vmid int, targetNod
 		if strings.EqualFold(vm.Status, "running") {
 			task, err := vm.Stop(ctx)
 			if err == nil && task != nil {
-				_ = task.WaitFor(ctx, 5)
+				_ = task.WaitFor(ctx, 30)
 			}
 		}
 		task, err := vm.Delete(ctx, &proxmox.VirtualMachineDeleteOptions{
@@ -140,7 +140,7 @@ func DeleteVM(conn types.Conn, userUUID string, role string, vmid int, targetNod
 			return fmt.Errorf("failed to delete VM %d: %w", vmid, err)
 		}
 		if task != nil {
-			_ = task.WaitFor(ctx, 5)
+			_ = task.WaitFor(ctx, 30)
 		}
 		return nil
 	}
@@ -153,7 +153,7 @@ func DeleteVM(conn types.Conn, userUUID string, role string, vmid int, targetNod
 		if strings.EqualFold(ct.Status, "running") {
 			task, err := ct.Stop(ctx)
 			if err == nil && task != nil {
-				_ = task.WaitFor(ctx, 5)
+				_ = task.WaitFor(ctx, 30)
 			}
 		}
 		task, err := ct.Delete(ctx, &proxmox.ContainerDeleteOptions{
@@ -164,7 +164,7 @@ func DeleteVM(conn types.Conn, userUUID string, role string, vmid int, targetNod
 			return fmt.Errorf("failed to delete container %d: %w", vmid, err)
 		}
 		if task != nil {
-			_ = task.WaitFor(ctx, 5)
+			_ = task.WaitFor(ctx, 30)
 		}
 		return nil
 	}
