@@ -462,14 +462,16 @@ func DeployCatalogItem(conn types.Conn, userUUID, role string, req types.DeployC
 		}
 
 		cloneTarget := ""
+		isFull := false
 		if tmplClient.NodeName != targetNode {
 			cloneTarget = targetNode
+			isFull = true
 		}
 
 		clonedID, task, err := tmpl.Clone(ctx, &proxmox.VirtualMachineCloneOptions{
 			NewID:  newVMID,
 			Name:   name,
-			Full:   proxmox.IntOrBool(true),
+			Full:   proxmox.IntOrBool(isFull),
 			Target: cloneTarget,
 		})
 		if err != nil {
